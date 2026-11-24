@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#152a2d">
+<title>枝头冬访 · 北长尾山雀</title>
+<style>
+  :root { color-scheme: dark; font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  html, body, #stage { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+  body { background: #152a2d; }
+  #stage { position: fixed; inset: 0; background: radial-gradient(ellipse at 24% 18%, #778e84, #263e43 48%, #102327 88%); }
+  canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; outline: none; }
+  canvas[data-hover] { cursor: pointer; } canvas:active { cursor: grabbing; }
+  canvas:focus-visible { outline: 1px solid #e1f3ed; outline-offset: -5px; }
+  #hints { position: fixed; top: max(26px, env(safe-area-inset-top)); right: max(28px, env(safe-area-inset-right)); display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; color: #f2f7f4; background: #182c2e93; border: 1px solid #d9f5ef27; border-radius: 13px; pointer-events: none; box-shadow: 0 8px 34px #0a171c26; backdrop-filter: blur(14px); font-size: 11px; letter-spacing: .1em; }
+  .hint { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .hint svg { width: 15px; height: 15px; fill: none; stroke: #b5d9cf; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
+  .hint .touch { display: none; }
+  #fallback { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; width: min(84%, 70ch); color: #eff7f4; text-align: center; font-size: 14px; line-height: 1.8; }
+  #fallback[hidden] { display: none; }
+  @media (pointer: coarse) { .hint .touch { display: inline; } .hint .mouse { display: none; } }
+  @media (max-width: 600px) { #hints { top: max(15px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); gap: 9px; padding: 11px 12px; font-size: 10px; } }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<main id="stage" aria-label="冬日雪松枝头的北长尾山雀"></main>
+<aside id="hints" aria-label="互动提示">
+  <span class="hint"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5Z"/><circle cx="10" cy="10" r="2"/></svg><span class="mouse">移动鼠标吸引视线</span><span class="touch">拖动环绕观察</span></span>
+  <span class="hint"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 17c4-5 7-7 12-10M6 14c-2-5 4-10 11-11 0 7-4 13-10 12m4-4.5.5-3.5"/></svg><span>点击山雀听鸟鸣</span></span>
+  <span class="hint"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="4.8"/><path d="m12 12 4 4M6.5 8.5h4m-2-2v4"/></svg><span class="mouse">拖动环绕 · 滚轮缩放</span><span class="touch">双指捏合微距缩放</span></span>
+</aside>
+<p id="fallback" role="status" hidden></p>
+<noscript><p role="status">请开启 JavaScript，以进入雪松枝头的观鸟场景。</p></noscript>
+<script type="module">
+const stage = document.querySelector('#stage');
+const fallback = document.querySelector('#fallback');
+function fail(message) { fallback.textContent = message; fallback.hidden = false; }
+try {
+  const THREE = await import('three');
+  const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+  createWorld(THREE, OrbitControls);
+} catch (error) {
+  console.error(error);
+  fail('无法开启观鸟场景。请检查是否能连接 CDN，以及浏览器是否支持 WebGL 2。');
+}
+
+function createWorld(T, OrbitControls) {
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2', { alpha:false, antialias:false, powerPreference:'high-performance' });
+  if (!gl) throw new Error('WebGL 2 is not available');
+  canvas.tabIndex = 0;
+  canvas.setAttribute('aria-label', '互动北长尾山雀。按空格或回车可听鸟鸣。');
+  stage.append(canvas);
+  canvas.addEventListener('webglcontextlost', () => fail('图形上下文已中断，请重新载入页面。'));
+  const renderer = new T.WebGLRenderer({canvas, context:gl});
+  renderer.outputColorSpace = T.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = T.PCFShadowMap;
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(34, 1, .055, 95);
+  const viewHome = new T.Vector3(2.85, 2.26, 7.55);
+  const targetHome = new T.Vector3(-.38, 1.13, 0);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.dampingFactor = .075;
+  controls.enablePan = false; controls.rotateSpeed = .52; controls.zoomSpeed = .72;
+  controls.maxPolarAngle = Math.PI * .58; controls.minPolarAngle = .36;
+  controls.minDistance = 2.35; controls.maxDistance = 17;
+  const V = (x=0,y=0,z=0) => new T.Vector3(x,y,z);
+  const color = s => new T.Color(s);
+  const PI = Math.PI, TAU = PI*2;
+  const clamp = T.MathUtils.clamp, lerp = T.MathUtils.lerp;
+  const smooth = (a,b,x) => T.MathUtils.smoothstep(x,a,b);
+  let seed = 172412;
+  function rng() { seed = (Math.imul(seed,1664525)+1013904223)>>>0; return seed/4294967296; }
+  const between = (a,b) => lerp(a,b,rng());
+  const sign = () => rng()<.5 ? -1 : 1;
+  const up = V(0,1,0);
+  const uTime = {value:0}, uRuffle = {value:0}, uBlinkProgress = {value:0};
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  const hemi = new T.HemisphereLight(0xe4f4ff, 0x77747f, 1.76);
+  scene.add(hemi);
+  function sunlight(hex,power,at) { const light=new T.DirectionalLight(hex,power); light.position.copy(at); scene.add(light); return light; }
+  const key = sunlight(0xffe6c2, 2.05, V(-3,6,4));
+  key.castShadow=true;
+  key.target.position.set(-.4,.55,0); scene.add(key.target);
+  Object.assign(key.shadow.camera,{left:-4.8,right:4.8,top:3.3,bottom:-3.3,near:.4,far:15});
+  key.shadow.mapSize.set(1024,1024); key.shadow.bias=-.00018; key.shadow.normalBias=.025;
+  sunlight(0xc0e3ff, .73, V(5,2,1));
+  sunlight(0xffe0b3, 2.2, V(-3,4,-5));
+
+  // Classic 3-D gradient Perlin noise: lattice gradients plus quintic interpolation.
+  const perlin = /* glsl */`
+    vec3 gradient3(vec3 p) {
+      vec3 q = vec3(dot(p,vec3(127.1,311.7,74.7)),dot(p,vec3(269.5,183.3,246.1)),dot(p,vec3(113.5,271.9,124.6)));
+      return normalize(-1.0+2.0*fract(sin(q)*43758.5453)+vec3(.0001));
+    }
+    float perlin3(vec3 p) {
+      vec3 i=floor(p), f=fract(p), u=f*f*f*(f*(6.0*f-15.0)+10.0);
+      float a=dot(gradient3(i), f), b=dot(gradient3(i+vec3(1,0,0)), f-vec3(1,0,0));
+      float c=dot(gradient3(i+vec3(0,1,0)), f-vec3(0,1,0)), d=dot(gradient3(i+vec3(1,1,0)), f-vec3(1,1,0));
+      float e=dot(gradient3(i+vec3(0,0,1)), f-vec3(0,0,1)), g=dot(gradient3(i+vec3(1,0,1)), f-vec3(1,0,1));
+      float h=dot(gradient3(i+vec3(0,1,1)), f-vec3(0,1,1)), k=dot(gradient3(i+vec3(1,1,1)), f-vec3(1,1,1));
+      return mix(mix(mix(a,b,u.x),mix(c,d,u.x),u.y),mix(mix(e,g,u.x),mix(h,k,u.x),u.y),u.z);
+    }
+  `;
+
+  // Winter woods at optical infinity. The view direction makes the light shafts
+  // and distant trunks move naturally when the camera orbits the perch.
+  const sky = new T.Mesh(new T.SphereGeometry(58,36,24), new T.ShaderMaterial({
+    side:T.BackSide, depthWrite:false,
+    vertexShader:`varying vec3 vDirection; void main(){ vDirection=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader:/* glsl */`
+      varying vec3 vDirection;
+      ${perlin}
+      void main(){
+        vec3 dir=normalize(vDirection);
+        float angle=atan(dir.x,-dir.z);
+        float h=dir.y;
+        float horizon=smoothstep(-.48,.24,h);
+        vec3 base=mix(vec3(.014,.036,.041),vec3(.062,.125,.137),horizon);
+        float glow=exp(-3.4*pow(length((dir-normalize(vec3(-.60,.12,-.83)))*vec3(1.0,1.35,1.0)),2.));
+        float air=perlin3(dir*5.0+4.0)*.65+perlin3(dir*11.0)*.35;
+        base+=vec3(.15,.19,.16)*pow(glow,1.3);
+        base+=vec3(.26,.20,.106)*pow(glow,4.9);
+        base+=air*vec3(.050,.065,.063);
+        float trunks=perlin3(vec3(cos(angle)*13.0,sin(angle)*13.0,h*1.1));
+        float farTrunks=perlin3(vec3(cos(angle+.21)*27.0,sin(angle+.21)*27.0,h*1.6));
+        float shade=smoothstep(.06,.49,trunks*.75+farTrunks*.25);
+        base*=1.- .50*shade;
+        gl_FragColor=vec4(max(base,0.),1.);
+      }
+    `
+  }));
+  sky.frustumCulled=false; sky.renderOrder=-100; scene.add(sky);
+
+  const heightUniform={value:1};
+  function particles(dust) {
+    const positions=[], sizes=[], tones=[], phases=[];
+    const count=dust?140:190;
+    for(let i=0;i<count;i++) {
+      let x,y,z,s;
+      if(dust) { x=between(-8,8); y=between(-1,7); z=between(-12,4.2); s=between(.010,.038); }
+      else {
+        const angle=between(-PI,PI), r=between(11.5,30);
+        x=Math.sin(angle)*r; z=Math.cos(angle)*r; y=between(-6,14);
+        s=between(.17,1.1)*(i%11===0?1.8:1);
+      }
+      positions.push(x,y,z); sizes.push(s); tones.push(rng()); phases.push(between(0,TAU));
+    }
+    const geometry=new T.BufferGeometry();
+    for(const [name,values,n] of [['position',positions,3],['aSize',sizes,1],['aTone',tones,1],['aPhase',phases,1]]) geometry.setAttribute(name,new T.Float32BufferAttribute(values,n));
+    // Camera-facing instanced quads, not point sprites: bokeh can be larger than the GL point limit.
+    const billboards=new T.InstancedBufferGeometry();
+    const quad=new T.PlaneGeometry(1,1);
+    billboards.index=quad.index;
+    billboards.setAttribute('position',quad.attributes.position);
+    billboards.setAttribute('uv',quad.attributes.uv);
+    billboards.setAttribute('aCenter',new T.InstancedBufferAttribute(new Float32Array(positions),3));
+    for(const name of ['aSize','aTone','aPhase']) billboards.setAttribute(name,new T.InstancedBufferAttribute(geometry.attributes[name].array,1));
+    billboards.instanceCount=count;
+    const material=new T.ShaderMaterial({
+      defines:dust?{DUST:1}:{}, transparent:true, depthWrite:false,
+      blending:dust?T.NormalBlending:T.AdditiveBlending,
+      uniforms:{uTime},
+      vertexShader:/* glsl */`
+        uniform float uTime;
+        attribute vec3 aCenter;
+        attribute float aSize,aTone,aPhase;
+        varying vec2 vDisk;
+        varying float vTone,vPhase;
+        void main(){
+          vec3 p=aCenter;
+          #ifdef DUST
+          p.y=mod(p.y+1.0-uTime*(.095+.14*aTone),8.0)-1.0;
+          p.x+=sin(uTime*.39+aPhase)*.35-uTime*.032;
+          p.x=mod(p.x+8.0,16.0)-8.0;
+          p.z+=.18*sin(uTime*.3+aPhase*2.0);
+          #endif
+          vec4 mv=modelViewMatrix*vec4(p,1.);
+          mv.xy+=position.xy*aSize*2.;
+          gl_Position=projectionMatrix*mv;
+          vDisk=uv*2.-1.; vTone=aTone; vPhase=aPhase;
+        }
+      `,
+      fragmentShader:/* glsl */`
+        varying vec2 vDisk;
+        varying float vTone,vPhase;
+        void main(){
+          float d=length(vDisk);
+          #ifdef DUST
+          float a=(1.-smoothstep(.09,1.,d))*(.24+.52*vTone);
+          vec3 tint=mix(vec3(.53,.70,.78),vec3(1.,.89,.73),vTone);
+          #else
+          float angle=atan(vDisk.y,vDisk.x);
+          d*=1.+.025*cos(angle*7.+vPhase);
+          float a=(1.-smoothstep(.34,1.,d))*(.065+.23*pow(vTone,2.4));
+          a+=exp(-pow((d-.71)*7.,2.))*.019*(1.-smoothstep(.78,1.,d));
+          vec3 tint=mix(vec3(.17,.42,.46),vec3(.86,.67,.40),pow(vTone,2.8));
+          #endif
+          if(d>1.05) discard;
+          gl_FragColor=vec4(tint,a);
+        }
+      `
+    });
+    const m=new T.Mesh(billboards,material); m.frustumCulled=false; m.renderOrder=dust?8:2; scene.add(m);
+  }
+  particles(false); particles(true);
+
+  // Parametric feather/body coat. Broad, soft, curved lancelets lie close to the
+  // surface; only a sparse guard layer lifts slightly to soften the silhouette.
+  function plumageMaterial(isHead, instanced) {
+    const mat=new T.MeshStandardMaterial({color:0xffffff,roughness:instanced?.94:.97,metalness:0});
+    mat.customProgramCacheKey=()=>`plumage-${Number(isHead)}-${Number(instanced)}`;
+    mat.onBeforeCompile=sh=>{
+      Object.assign(sh.uniforms,{uTime,uRuffle});
+      sh.vertexShader=`uniform float uTime,uRuffle; varying vec3 vCoat,vFeatherView; varying float vTip,vSeed;\n`+sh.vertexShader;
+      sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>',/* glsl */`
+        #include <begin_vertex>
+        #ifdef USE_INSTANCING
+          vCoat=instanceMatrix[3].xyz;
+          vSeed=fract(sin(dot(vCoat,vec3(63.7,29.3,15.1)))*43758.5453);
+          vTip=clamp(position.y,0.,1.);
+          float pulse=sin(1.45*uTime+5.1*vCoat.x+7.7*vCoat.y+vSeed*6.283)*.72+sin(2.3*uTime+vSeed*11.0)*.28;
+          float softTip=smoothstep(.12,1.0,vTip);
+          transformed.x+=softTip*(.045*pulse+.11*uRuffle);
+          transformed.z+=softTip*(.035*pulse+.17*uRuffle*(.65+.35*sin(vSeed*6.283)));
+        #else
+          vCoat=position; vTip=1.; vSeed=.5;
+        #endif
+      `).replace('#include <project_vertex>',`#include <project_vertex>\n vFeatherView=-mvPosition.xyz;`);
+      sh.fragmentShader=`varying vec3 vCoat,vFeatherView; varying float vTip,vSeed;\n${perlin}\n`+sh.fragmentShader;
+      sh.fragmentShader=sh.fragmentShader.replace('#include <color_fragment>',/* glsl */`
+        #include <color_fragment>
+        float n=perlin3(vCoat*5.2)*.72+perlin3(vCoat*14.0)*.28;
+        vec3 cream=vec3(.88,.81,.70), white=vec3(.988,.979,.955);
+        vec3 feather=mix(cream,white,clamp(.76+n*1.09,0.,1.));
+        ${isHead ? `
+          float nape=smoothstep(.14,.56,-vCoat.x+.09*vCoat.y+n*.12)*smoothstep(-.17,.26,vCoat.y);
+          feather=mix(feather,vec3(.65,.60,.55),nape*.48);
+        ` : `
+          float mantle=smoothstep(.05,.51,vCoat.y+n*.19)*smoothstep(.34,-.49+ .001,vCoat.x);
+          float flank=smoothstep(.04,.52,abs(vCoat.z))*smoothstep(.29,-.44+.001,vCoat.y)*smoothstep(.27,-.66+.001,vCoat.x);
+          feather=mix(feather,vec3(.23,.20,.185)*(1.+n*.46),mantle*.84);
+          feather=mix(feather,vec3(.72,.405,.37)*(1.+n*.30),flank*.92);
+        `.replace('smoothstep(.34,-.49+ .001,vCoat.x)','(1.-smoothstep(-.49,.34,vCoat.x))').replace('smoothstep(.29,-.44+.001,vCoat.y)','(1.-smoothstep(-.44,.29,vCoat.y))').replace('smoothstep(.27,-.66+.001,vCoat.x)','(1.-smoothstep(-.66,.27,vCoat.x))')}
+        ${instanced?'feather*=mix(.91,1.015,smoothstep(.02,.94,vTip))*(.975+.05*vSeed);':''}
+        diffuseColor.rgb*=feather;
+      `).replace('#include <opaque_fragment>',/* glsl */`
+        vec3 viewDir=normalize(vFeatherView);
+        vec3 lightView=normalize(mat3(viewMatrix)*vec3(-.55,.48,-.66));
+        float grazing=pow(1.-clamp(abs(dot(normal,viewDir)),0.,1.),2.7);
+        float transmission=pow(max(dot(viewDir,-lightView),0.),2.1);
+        float thinness=${instanced?'(.14+.48*smoothstep(.05,1.,vTip))':'0.22'};
+        outgoingLight+=diffuseColor.rgb*vec3(1.,.84,.68)*thinness*(.13*grazing+.14*transmission*(.42+.58*grazing));
+        #include <opaque_fragment>
+      `);
+    };
+    return mat;
+  }
+  function gridMesh(rows,cols,fn,flip=false) {
+    const pos=[], uv=[], idx=[];
+    for(let i=0;i<=rows;i++) for(let j=0;j<=cols;j++) {
+      const p=fn(i/rows,j/cols);
+      pos.push(p.x,p.y,p.z); uv.push(j/cols,i/rows);
+      if(i<rows&&j<cols) {
+        const a=i*(cols+1)+j,b=a+cols+1;
+        if(flip) idx.push(a,a+1,b,b,a+1,b+1); else idx.push(a,b,a+1,b,b+1,a+1);
+      }
+    }
+    const g=new T.BufferGeometry(); g.setAttribute('position',new T.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv',new T.Float32BufferAttribute(uv,2)); g.setIndex(idx); g.computeVertexNormals(); return g;
+  }
+  const tuftGeo=gridMesh(7,7,(t,v)=>{
+    const a=TAU*v;
+    const shoulders=smooth(.025,.24,t)*(1.-smooth(.76,1.,t));
+    const w=(.32+.68*shoulders)*(.90-.20*t);
+    return V(Math.cos(a)*.43*w+.11*Math.sin(PI*t)*t,t,.12*t*t+Math.sin(a)*.24*w);
+  },true);
+  function ellipsoidPoint(n,r,head) {
+    const waist=head ? (1-.07*n.y+.045*n.x) : (1+.13*n.x-.12*n.y);
+    return V(n.x*r.x,n.y*r.y*(head?1:1+.07*n.x),n.z*r.z*waist);
+  }
+  function ellipsoidNormal(n,r,head) {
+    const a=Math.abs(n.y)<.92?up:V(1,0,0);
+    const t=a.clone().cross(n).normalize(), b=n.clone().cross(t);
+    const p=ellipsoidPoint(n,r,head);
+    return ellipsoidPoint(n.clone().addScaledVector(t,.001).normalize(),r,head).sub(p)
+      .cross(ellipsoidPoint(n.clone().addScaledVector(b,.001).normalize(),r,head).sub(p)).normalize();
+  }
+  const hitParts=[];
+  function coat(parent,r,count,isHead) {
+    const geo=new T.SphereGeometry(1,80,56), attr=geo.getAttribute('position');
+    for(let i=0;i<attr.count;i++) {
+      const p=ellipsoidPoint(V(attr.getX(i),attr.getY(i),attr.getZ(i)),r,isHead);
+      attr.setXYZ(i,p.x,p.y,p.z);
+    }
+    geo.computeVertexNormals();
+    const skin=new T.Mesh(geo,plumageMaterial(isHead,false));
+    skin.castShadow=true; parent.add(skin); hitParts.push(skin);
+    const tufts=new T.InstancedMesh(tuftGeo,plumageMaterial(isHead,true),count);
+    const matrix=new T.Matrix4(), golden=PI*(3-Math.sqrt(5));
+    const eyeAxis=V(.49,.18,.85).normalize();
+    let written=0;
+    // Slight oversampling keeps the exact instance count while clearing the eyelids and bill.
+    const samples=count+(isHead ? 285 : 0);
+    for(let i=0;i<samples && written<count;i++) {
+      const y=1-2*(i+between(.18,.82))/samples, a=golden*i+between(-.36,.36), rr=Math.sqrt(1-y*y);
+      const n=V(Math.cos(a)*rr,y,Math.sin(a)*rr);
+      if(isHead && V(n.x,n.y,Math.abs(n.z)).dot(eyeAxis)>.974) continue;
+      if(isHead && n.x>.982 && Math.abs(n.y+.07)<.22) continue;
+      const p=ellipsoidPoint(n,r,isHead), N=ellipsoidNormal(n,r,isHead);
+      const preferred=isHead?V(-.96,-.27,.10*n.z):V(-1.,-.30,.06*n.z);
+      const tangent=preferred.addScaledVector(N,-preferred.dot(N));
+      if(tangent.lengthSq()<.0005) tangent.copy(up).cross(N);
+      // Most down lies along the body; a small, irregular guard-feather fraction
+      // lifts just enough to make a soft silhouette without forming sharp spikes.
+      tangent.normalize().applyAxisAngle(N,between(-.43,.43));
+      const guard=rng()<.085;
+      const lift=guard?between(.29,.43):between(.12,.24);
+      const direction=tangent.multiplyScalar(guard?between(.88,.96):between(.96,1.04)).addScaledVector(N,lift).normalize();
+      const X=direction.clone().cross(N).normalize(), Z=X.clone().cross(direction).normalize();
+      const ventral=(1.-smooth(-.52,.16,n.y))*(isHead?.20:1);
+      let length=guard?between(.034,.050):between(.022,.038);
+      length+=ventral*(guard?.014:.010);
+      if(isHead) length*=.77;
+      if(rng()>.986) length*=1.16;
+      const width=guard?between(.015,.024):between(.022,.039);
+      const depth=guard?between(.006,.010):between(.005,.008);
+      matrix.makeBasis(X.multiplyScalar(width),direction.multiplyScalar(length),Z.multiplyScalar(depth));
+      matrix.setPosition(p.addScaledVector(N,between(.001,.004)));
+      tufts.setMatrixAt(written++,matrix);
+    }
+    if(written!==count) throw new Error('Not enough feather samples');
+    tufts.instanceMatrix.needsUpdate=true; tufts.computeBoundingSphere(); parent.add(tufts);
+    return tufts;
+  }
+  const bird=new T.Group(); bird.name='北长尾山雀'; scene.add(bird);
+  const torso=new T.Group(); torso.position.set(-.20,1.11,0); bird.add(torso);
+  coat(torso,V(.81,.65,.62),7400,false);
+  const head=new T.Group(); head.position.set(.40,1.49,0); head.rotation.order='YZX'; bird.add(head);
+  const headBall=new T.Group(); headBall.position.set(.10,.12,0); head.add(headBall);
+  coat(headBall,V(.6,.535,.52),5100,true);
+
+  const standard=(hex,roughness=.76)=>new T.MeshStandardMaterial({color:hex,roughness});
+  const unitBall=new T.SphereGeometry(1,28,20);
+  function oval(parent,mat,p,r) { const m=new T.Mesh(unitBall,mat); m.position.copy(p); m.scale.copy(r); parent.add(m); return m; }
+  function spline(points) {return new T.CatmullRomCurve3(points);}
+  function tube(parent,points,r,mat,segments=12) {
+    const m=new T.Mesh(new T.TubeGeometry(spline(points),segments,r,6,false),mat); parent.add(m); return m;
+  }
+
+  // Tail and flight feathers: bowed vanes lofted along Catmull–Rom rachises.
+  function vaneMaterial() {
+    const mat=new T.MeshStandardMaterial({side:T.DoubleSide,roughness:.77,vertexColors:true});
+    mat.onBeforeCompile=sh=>{
+      sh.vertexShader='varying vec2 vVane;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vVane=uv;');
+      sh.fragmentShader='varying vec2 vVane;\n'+sh.fragmentShader.replace('#include <color_fragment>',/* glsl */`
+        #include <color_fragment>
+        float seam=abs(vVane.x-.46);
+        float cells=vVane.y*113.0-seam*12.2+sin(vVane.y*20.0)*.33;
+        float barbs=mix(sin(cells*6.283185),0.,smoothstep(.18,.60,fwidth(cells)));
+        float rachis=exp(-seam*70.0)*(1.-smoothstep(.66,1.,vVane.y));
+        diffuseColor.rgb *= 1.0+barbs*.105+rachis*.26;
+      `);
+    };
+    return mat;
+  }
+  const vaneMat=vaneMaterial(), featherPieces=[];
+  function vane(parent,start,mid,end,spanAxis,width,dark,edge,edgeStrength,register=false) {
+    const curve=spline([start,mid,end]);
+    const g=gridMesh(18,8,(t,v)=>{
+      const along=curve.getTangent(t), side=spanAxis.clone().addScaledVector(along,-spanAxis.dot(along)).normalize();
+      const face=side.clone().cross(along).normalize();
+      const w=width*(.20+.8*Math.pow(Math.sin(PI*(.04+t*.945)),.50))*(1-.18*t);
+      const u=v*2-1;
+      return curve.getPoint(t).addScaledVector(side,u*w*(u<0?.82:1)).addScaledVector(face,(1-u*u)*width*.26);
+    });
+    const uv=g.attributes.uv, out=[];
+    for(let i=0;i<uv.count;i++) {
+      const x=uv.getX(i), y=uv.getY(i);
+      const rim=smooth(.72,1,Math.abs(x*2-1))*(.58+.42*smooth(.46,1,y));
+      const strength=Math.min(1,rim*edgeStrength+Math.pow(y,19)*edgeStrength*.31);
+      const c=dark.clone().lerp(edge,strength).multiplyScalar(.70+.30*smooth(0,.55,y)); out.push(c.r,c.g,c.b);
+    }
+    g.setAttribute('color',new T.Float32BufferAttribute(out,3));
+    const m=new T.Mesh(g,vaneMat); parent.add(m); if(register) featherPieces.push(m); return m;
+  }
+  const tail=new T.Group(); tail.position.set(-.71,1.21,0); bird.add(tail);
+  for(let j=-5;j<=5;j++) {
+    const k=Math.abs(j), a=j*.029, outer=k>=4, side=V(0,.15,1);
+    const f=vane(tail,V(.14,.14-k*.009,a*.57),V(-.77,-.06-k*.015,a*.97),V(-2.14+.093*k,-.29-k*.017,a*1.73),side,.106-.007*k,
+      color(outer?0xbcb8ac:(k===0?0x343138:0x413940)),color(outer?0xf7f0e4:0x9f9291),outer?.93:.33,true);
+    if(j===0) f.castShadow=true;
+  }
+  const wings=[];
+  for(const s of [-1,1]) {
+    const wing=new T.Group(); wing.position.set(-.21,1.15,s*.34); bird.add(wing); wings.push(wing);
+    const wingBed=oval(wing,standard(0x302c31),V(-.23,.045,s*.125),V(.60,.329,.198));
+    wingBed.rotation.z=.29; wingBed.castShadow=true; hitParts.push(wingBed);
+    // Primaries, greater coverts, then the small upper mantle coverts, in that order.
+    for(let i=0;i<8;i++) {
+      const k=i/7, z=s*(.218+.084*Math.sin(PI*k));
+      vane(wing,V(.25-.19*k,.29-.34*k,z*.88),V(-.40-.10*k,.03-.22*k,z),V(-1.02+.25*k,-.31-.055*k,z*.61),V(-.26,.93,s*.30),.106-.024*k,
+        color(i%2===0?0x393136:0x47393a),color(i<5?0xc6b9af:0x9c807b),.56,true);
+    }
+    for(let i=0;i<7;i++) {
+      const k=i/6, z=s*(.275+.052*Math.sin(k*PI));
+      vane(wing,V(.29-.24*k,.325-.32*k,z*.88),V(-.09-.10*k,.21-.29*k,z),V(-.64+.12*k,-.052-.29*k,z*.87),V(-.21,.95,-s*.26),.106,
+        color(i%2===0?0x493c3b:0x4b4142),color(0xbdaaa4),.47,true);
+    }
+    for(let i=0;i<8;i++) {
+      const k=i/7, z=s*(.264+.079*Math.sin(k*PI));
+      vane(wing,V(.255-.48*k,.34+.13*Math.sin(k*PI)-.12*k,z*.71),V(.062-.47*k,.296+.08*Math.sin(k*PI)-.13*k,z),V(-.105-.49*k,.168+.05*Math.sin(k*PI)-.105*k,z*.93),V(-.08,.79,-s*.62),.088,
+        color(i<3?0x807572:0x5c5154),color(0xccc0b3),.54);
+    }
+  }
+
+  // The short bill has separately modelled maxilla and mandible and a dark seam.
+  const billMat=standard(0x322c2c,.40), mouthMat=standard(0x170f10,.87);
+  const billBase=.553;
+  const bill = new T.Group(); head.add(bill); bill.position.set(billBase,.078,0);
+  function billHalf(upper) {
+    const g=gridMesh(17,19,(t,v)=>{
+      const x=.255*t, r=(.11*(1-t)**.70+.001)*(1+.14*Math.sin(PI*t));
+      const seam=.001-.050*t*t;
+      let phi=PI*v;
+      return V(x,seam+(upper?1:-1)*Math.sin(phi)*r*(upper?1.02:.52)+ (upper?.002:-.006),Math.cos(phi)*r);
+    },upper);
+    const m=new T.Mesh(g,billMat); m.material.side=T.DoubleSide; m.castShadow=true; hitParts.push(m);
+    return m;
+  }
+  const billUpper=billHalf(true), billLower=billHalf(false); bill.add(billUpper,billLower);
+  oval(bill,mouthMat,V(.078,-.005,0),V(.147,.016,.080));
+  for(const s of [-1,1]) {
+    const n=oval(bill,mouthMat,V(.072,.055,s*.076),V(.019,.010,.006)); n.rotation.z=-.18; n.rotation.y=s*.21;
+  }
+
+  const eyeRim=standard(0x5a4238,.64), socketMat=standard(0x392d2a,.79);
+  const eyeGeometry=new T.SphereGeometry(1,48,36), eyes=[];
+  function eyeMaterial() {
+    return new T.ShaderMaterial({
+      uniforms:{uGaze:{value:new T.Vector2()}},
+      vertexShader:/* glsl */`varying vec3 vEye,vSurface,vViewNormal; void main(){ vEye=position; vViewNormal=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.); vSurface=-mv.xyz; gl_Position=projectionMatrix*mv; }`,
+      fragmentShader:/* glsl */`
+        uniform vec2 uGaze;
+        varying vec3 vEye,vSurface,vViewNormal;
+        void main(){
+          vec3 p=normalize(vEye), N=normalize(vViewNormal), V=normalize(vSurface);
+          vec3 R=reflect(-V,N);
+          float facing=max(dot(N,V),0.);
+          float fresnel=pow(1.-facing,4.0);
+          vec2 irisCenter=vec2(-.018,.022)+uGaze;
+          float rd=length(p.xy-irisCenter);
+          float iris=smoothstep(.34,.67,rd)*(1.-smoothstep(.66,.94,rd))*smoothstep(-.07,.37,p.z);
+          float fibers=sin(atan(p.y-irisCenter.y,p.x-irisCenter.x)*52.0+rd*20.0)*.28+.72;
+          float sky=.026*smoothstep(-.37,.46,R.y);
+          float softbox=pow(max(dot(R,normalize(vec3(-.39,.46,.80))),0.),20.0);
+          float glint=pow(max(dot(R,normalize(vec3(-.43,.48,.764))),0.),165.0);
+          float bounce=pow(max(dot(R,normalize(vec3(.62,-.28,.72))),0.),49.0);
+          vec3 c=vec3(.0033,.0027,.0028)+iris*fibers*vec3(.058,.025,.014);
+          c+=vec3(.35,.56,.60)*sky+fresnel*vec3(.067,.082,.086)*.70;
+          c+=softbox*vec3(.154,.183,.184)+glint*vec3(1.75,1.64,1.43)+bounce*vec3(.067,.112,.168);
+          gl_FragColor=vec4(c,1.0);
+        }
+      `
+    });
+  }
+  function membraneMaterial(sweepSign) {
+    return new T.ShaderMaterial({transparent:true,depthWrite:false,
+      uniforms:{uBlinkProgress,uSweepSign:{value:sweepSign}},
+      vertexShader:'varying vec3 vEye,vN,vV; void main(){vEye=position; vN=normalMatrix*normal; vec4 mv=modelViewMatrix*vec4(position,1.); vV=-mv.xyz; gl_Position=projectionMatrix*mv;}',
+      fragmentShader:/* glsl */`
+        uniform float uBlinkProgress,uSweepSign; varying vec3 vEye,vN,vV;
+        void main(){
+          if(uBlinkProgress<.004) discard;
+          vec3 p=normalize(vEye);
+          float x=(p.x*uSweepSign+.96)*.5+.075*p.y*p.y-.075*p.y;
+          float edge=x-uBlinkProgress*1.18;
+          float sweep=1.0-smoothstep(-.027,.032,edge);
+          float cover=smoothstep(-.12,.22,p.z);
+          if(sweep*cover<.006) discard;
+          float ridge=exp(-abs(edge)*24.0);
+          float gleam=pow(1.0-clamp(dot(normalize(vN),normalize(vV)),0.,1.),2.2);
+          gl_FragColor=vec4(mix(vec3(.63,.64,.62),vec3(1.0,.95,.82),ridge*.65+gleam*.22),sweep*cover*(.53+ridge*.29));
+        }
+      `});
+  }
+  for(const s of [-1,1]) {
+    const housing=new T.Group(); housing.position.set(.386,.228,s*.422);
+    const out=V(.48,.12,s*.87).normalize(); housing.quaternion.setFromUnitVectors(V(0,0,1),out); head.add(housing);
+    oval(housing,socketMat,V(0,0,-.025),V(.142,.135,.055));
+    oval(housing,eyeRim,V(0,0,-.005),V(.122,.116,.071));
+    const eyeMat=eyeMaterial();
+    const globe=new T.Mesh(eyeGeometry,eyeMat); globe.position.z=.019; globe.scale.set(.108,.103,.076); housing.add(globe); hitParts.push(globe);
+    const film=new T.Mesh(eyeGeometry,membraneMaterial(s>0?-1:1));
+    film.position.copy(globe.position); film.scale.copy(globe.scale).multiplyScalar(1.021); film.renderOrder=7; housing.add(film);
+    const hinge=V(1,0,0).applyQuaternion(housing.quaternion.clone().invert()).x;
+    eyes.push({eyeMat,hinge});
+  }
+
+  // A branch ribbon is a noisy bent cylinder. Matching angular snow meshes have
+  // smoothly thinned edges so the bark and snow share the same underlying shape.
+  const branchCurve=spline([V(-5.45,-.94,.18),V(-3.45,-.65,.07),V(-1.62,-.38,.13),V(-.1,-.225,.056),V(1.60,-.09,-.19),V(3.24,.24,-.42),V(5.0,.67,-.47)]);
+  const env=new T.Group(); scene.add(env);
+  function pathBasis(curve,t) {
+    const dir=curve.getTangent(t), z=dir.clone().cross(up).normalize();
+    return {z, y:z.clone().cross(dir).normalize()};
+  }
+  function barkPoint(curve,t,a,r) {
+    const {z,y}=pathBasis(curve,t);
+    const texture=.031*Math.sin(a*17+11*t)+.039*Math.sin(a*11-8*t)+.027*Math.cos(a*31+21*t)+.066*Math.sin(a*4+18*t)+.045*Math.sin(a*7+t*58);
+    return curve.getPoint(t).addScaledVector(y,Math.cos(a)*r*(1+texture)).addScaledVector(z,Math.sin(a)*r*(1+texture));
+  }
+  function barkMaterial() {
+    const mat=standard(0xffffff,.94);
+    mat.onBeforeCompile=sh=>{
+      sh.vertexShader='varying vec2 vWood; varying vec3 vWoodPoint;\n'+sh.vertexShader;
+      sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vWood=uv; vWoodPoint=position;');
+      sh.fragmentShader=`varying vec2 vWood; varying vec3 vWoodPoint;\n${perlin}\n`+sh.fragmentShader;
+      sh.fragmentShader=sh.fragmentShader.replace('#include <color_fragment>',/* glsl */`
+        #include <color_fragment>
+        float a=vWood.x*6.283185;
+        vec3 cylindrical=vec3(cos(a),sin(a),vWood.y);
+        float coarse=perlin3(cylindrical*vec3(11.,11.,7.));
+        float grain=perlin3(cylindrical*vec3(39.,39.,14.)+coarse*.86);
+        float shred=perlin3(cylindrical*vec3(100.,100.,60.));
+        float split=smoothstep(.27,.51,abs(grain+.25*coarse));
+        float knots=perlin3(vWoodPoint*6.3);
+        vec3 stem=mix(vec3(.047,.029,.022),vec3(.23,.143,.082),clamp(.43+coarse*.62+grain*.47+shred*.24+knots*.26,0.,1.));
+        diffuseColor.rgb*=stem*(1.-split*.60);
+      `).replace('#include <normal_fragment_maps>',/* glsl */`
+        #include <normal_fragment_maps>
+        float bump=grain*.037+shred*.007+coarse*.030;
+        vec3 dpdx=dFdx(vViewPosition),dpdy=dFdy(vViewPosition);
+        vec3 xGrad=cross(dpdy,normal), yGrad=cross(normal,dpdx);
+        float det=dot(dpdx,xGrad);
+        normal=normalize(abs(det)*normal+sign(det)*(dFdx(bump)*xGrad+dFdy(bump)*yGrad));
+      `);
+    };
+    return mat;
+  }
+  const bark=barkMaterial();
+  function log(curve,startRadius,endRadius,rows=92) {
+    const radius=t=>lerp(startRadius,endRadius,t)*(.99+.075*Math.sin(t*PI*4)+.037*Math.sin(t*PI*11));
+    const m=new T.Mesh(gridMesh(rows,40,(t,v)=>barkPoint(curve,t,TAU*v,radius(t)),true),bark);
+    env.add(m); m.castShadow=true; m.receiveShadow=true; return radius;
+  }
+  const branchRadius=log(branchCurve,.36,.17,124);
+  const snowMat=standard(0xffffff,.81);
+  snowMat.onBeforeCompile=sh=>{
+    sh.vertexShader='varying vec3 vSnow;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vSnow=position;');
+    sh.fragmentShader=`varying vec3 vSnow;\n${perlin}\n`+sh.fragmentShader;
+    sh.fragmentShader=sh.fragmentShader.replace('#include <color_fragment>',/* glsl */`
+      #include <color_fragment>
+      float snowNoise=perlin3(vSnow*25.);
+      float powder=perlin3(vSnow*92.);
+      diffuseColor.rgb*=mix(vec3(.71,.82,.89),vec3(.98,.97,.94),.54+snowNoise*.53+powder*.21);
+    `).replace('#include <normal_fragment_maps>',/* glsl */`
+      #include <normal_fragment_maps>
+      vec3 dx=dFdx(vViewPosition),dy=dFdy(vViewPosition);
+      vec3 nx=cross(dy,normal), ny=cross(normal,dx);
+      float det=dot(dx,nx), bump=snowNoise*.018+powder*.003;
+      normal=normalize(abs(det)*normal+sign(det)*(dFdx(bump)*nx+dFdy(bump)*ny));
+    `).replace('#include <opaque_fragment>',/* glsl */`
+      float crystals=smoothstep(.59,.78,perlin3(vSnow*380.));
+      outgoingLight+=vec3(.23,.34,.43)*crystals*.61;
+      #include <opaque_fragment>
+    `);
+  };
+  function snowCap(curve,radius,t0,t1,spread,thick,phase) {
+    const g=gridMesh(Math.ceil(100*(t1-t0))+24,29,(t,v)=>{
+      const f=lerp(t0,t1,t), edge=(v*2-1), taper=smooth(0,.125,t)*(1-smooth(.86,1,t));
+      const wav=.13*Math.sin(t*37+phase)+.085*Math.sin(t*87+phase*.4)+.067*Math.sin(t*127);
+      const angle=edge*(spread+wav)*(.19+.81*Math.sqrt(taper))+.09*Math.sin(t*16+phase);
+      const p=barkPoint(curve,f,angle,radius(f));
+      const crown=Math.pow(Math.max(0,1-edge*edge),.67);
+      const lumps=.92+.21*Math.cos(t*24+phase)+.102*Math.sin(t*66+angle*5.1)+.052*Math.sin(t*136+angle*12)+.036*Math.sin(t*174+angle*28);
+      return p.addScaledVector(pathBasis(curve,f).y, thick*lumps*taper*crown-.015*(1-crown*taper));
+    },true);
+    const m=new T.Mesh(g,snowMat); env.add(m); m.receiveShadow=true; m.castShadow=true; return m;
+  }
+  snowCap(branchCurve,branchRadius,0,.44,1.36,.19,2.1);
+  snowCap(branchCurve,branchRadius,.445,1,1.31,.172,4.5);
+  snowCap(branchCurve,branchRadius,.185,.265,1.07,.052,1.7);
+  function twig(points,r0,r1,withSnow=false) {
+    const curve=spline(points), r=log(curve,r0,r1,37);
+    if(withSnow) snowCap(curve,r,.06,.95,1.12,r0*.48,2.7);
+    return curve;
+  }
+  const cedarA=twig([V(1.42,-.06,-.13),V(2.35,.01,-.56),V(3.35,.17,-.83),V(4.56,.47,-1.10)],.098,.011,true);
+  const cedarB=twig([V(-1.85,-.42,.12),V(-2.37,-.15,-.15),V(-3.05,.20,-.48),V(-3.85,.38,-.92)],.104,.009,true);
+  const cedarC=twig([V(2.36,.075,-.28),V(2.98,-.10,.22),V(3.66,-.27,.59),V(4.63,-.28,.90)],.091,.008,false);
+  const cedarD=twig([V(-3.33,-.65,.05),V(-3.62,-.31,.32),V(-4.05,-.15,.61),V(-4.60,.01,.77)],.10,.011,true);
+  twig([V(.92,-.10,-.13),V(1.37,-.13,-.57),V(1.92,-.07,-.92),V(2.13,.02,-1.20)],.048,.009,false);
+  twig([V(-1.74,-.41,.08),V(-1.22,-.54,.34),V(-.95,-.56,.55)],.070,.016,false);
+  twig([V(-2.48,-.47,.02),V(-2.39,-.26,-.18),V(-2.39,-.15,-.26)],.064,.027,true);
+
+  // Cedar needles emerge as radial rosettes from short woody shoots.
+  const needlePos=[],needleColors=[];
+  const greens=['#254b43','#385e54','#527568','#6f8776','#3e695c','#788d7d'].map(color);
+  function addNeedle(o,d,l,w,c) {
+    const cross=up.clone().cross(d).normalize(); if(cross.lengthSq()<.01) cross.set(1,0,0);
+    const n=d.clone().cross(cross).normalize();
+    const p=o.clone().addScaledVector(d,l*.44).addScaledVector(up,l*.125);
+    const tip=o.clone().addScaledVector(d,l).addScaledVector(up,l*.22);
+    const a=p.clone().addScaledVector(cross,w), b=p.clone().addScaledVector(cross,-w), ridge=p.clone().addScaledVector(n,w*.76);
+    const base=c.clone().multiplyScalar(.47), side=c.clone().multiplyScalar(.78), end=c.clone().lerp(color(0x9fb2a1),.19);
+    for(const [point,tint] of [[o,base],[a,side],[ridge,c],[a,side],[tip,end],[ridge,c],[o,base],[ridge,c],[b,side],[ridge,c],[tip,end],[b,side]]) {
+      needlePos.push(point.x,point.y,point.z); needleColors.push(tint.r,tint.g,tint.b);
+    }
+  }
+  for(const [curve,count] of [[cedarA,47],[cedarB,31],[cedarC,34],[cedarD,22]]) {
+    for(let i=0;i<count;i++) {
+      const t=between(.25,.995), start=curve.getPoint(t);
+      const frame=pathBasis(curve,t), tangent=curve.getTangent(t);
+      const side=i%2===0?1:-1;
+      const shoot=start.clone().addScaledVector(frame.z,side*between(.034,.255)).addScaledVector(frame.y,between(.00,.15));
+      const extension=shoot.clone().addScaledVector(tangent,between(.08,.32));
+      tube(env,[start,shoot,extension],between(.006,.014),bark,5);
+      const rosettes=i%3===0?3:2;
+      for(let k=0;k<rosettes;k++) {
+        const center=shoot.clone().lerp(extension,(k+.24)/rosettes);
+        const axis=V(between(-.3,.65),between(.41,1),side*between(.10,.67)).normalize();
+        const u=axis.clone().cross(V(1,0,0)).normalize(), v=axis.clone().cross(u).normalize();
+        const N=Math.floor(between(14,27));
+        for(let j=0;j<N;j++) {
+          const a=(j+rng()*.49)/N*TAU;
+          const dir=axis.clone().multiplyScalar(between(.11,.73)).addScaledVector(u,Math.sin(a)).addScaledVector(v,Math.cos(a)).normalize();
+          addNeedle(center,dir,between(.090,.27)*(1-t*.22),between(.004,.009),greens[Math.floor(rng()*greens.length)]);
+        }
+        if(k===1&&rng()<.15) {
+          const patch=oval(env,snowMat,center.clone().add(V(.01,.053,0)),V(between(.038,.094),.025,between(.026,.061)));
+          patch.receiveShadow=true;
+        }
+      }
+    }
+  }
+  const needlesGeo=new T.BufferGeometry(); needlesGeo.setAttribute('position',new T.Float32BufferAttribute(needlePos,3));
+  needlesGeo.setAttribute('color',new T.Float32BufferAttribute(needleColors,3)); needlesGeo.computeVertexNormals();
+  const needles=new T.Mesh(needlesGeo,new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:.80}));
+  needles.receiveShadow=true; env.add(needles);
+
+  // Visible anatomy: scaly toes wrap over the snow and hook into the bark.
+  const feet=[], footMat=standard(0x594747,.75), claws=standard(0x28242a,.52), scales=standard(0x765e5c,.82);
+  for(const [x,z] of [[.12,.29],[-.39,-.12]]) {
+    const foot=new T.Group(); foot.position.set(x,.139,z); bird.add(foot); feet.push(foot);
+    const legPoints=[V(-.11,.39,-.065),V(-.04,.26,-.036),V(.027,.132,.005),V(0,.046,.006)];
+    tube(foot,legPoints,.038,footMat,16).castShadow=true;
+    const ankle=oval(foot,footMat,V(0,.041,.010),V(.067,.044,.051)); ankle.castShadow=true;
+    for(let j=0;j<3;j++) {
+      const xEnd=.085+j*.066, near=.123-j*.049;
+      const points=[V(.014,.046,.011),V(.064+j*.018,.055,.038+j*.020),V(xEnd,.006,near+.086),V(xEnd-.019,-.054,near+.106)];
+      const toe=tube(foot,points,.022-j*.002,footMat,13); toe.castShadow=true;
+      const path=spline(points);
+      for(let k=1;k<6;k++) {
+        const p=path.getPoint(k/7); p.y+=.011;
+        const sc=oval(foot,scales,p,V(.014,.012,.020-j*.0018));
+        sc.rotation.y=Math.atan2(path.getTangent(k/7).z,path.getTangent(k/7).x);
+      }
+      const a=points[3], nail=spline([a,a.clone().add(V(.003,-.028,.012)),a.clone().add(V(-.037,-.056,.001))]);
+      const nailGeo=gridMesh(9,8,(t,v)=>{
+        const r=.014*(1-t)**.8+.0004, n=TAU*v;
+        const b=pathBasis(nail,t); return nail.getPoint(t).addScaledVector(b.y,Math.cos(n)*r).addScaledVector(b.z,Math.sin(n)*r);
+      },true);
+      foot.add(new T.Mesh(nailGeo,claws));
+    }
+    tube(foot,[V(-.021,.052,-.005),V(-.115,.027,-.065),V(-.16,-.052,-.079),V(-.13,-.10,-.084)],.019,footMat,12);
+    tube(foot,[V(-.13,-.10,-.084),V(-.115,-.118,-.078),V(-.095,-.125,-.073)],.010,claws,7);
+  }
+
+  // A clear, two-component winter silhouette; the legs meet the upper surface.
+
+
+  const dustMotes=[];
+  for(let i=0;i<25;i++) {
+    const mote=oval(scene,new T.MeshBasicMaterial({color:i%3===0?0xffecc8:0xd5eeeb,transparent:true,opacity:between(.08,.25),depthWrite:false}),V(between(-4.7,4.7),between(-.45,3.0),between(1.5,4.5)),V(.007,.007,.007));
+    dustMotes.push({mote,phase:between(0,TAU),speed:between(.35,.85),origin:mote.position.clone()});
+  }
+
+  // Browser-uniform focus blur provides genuine depth of field while preserving
+  // all world-space pixel shaders (no cross-origin assets or extra scene pass).
+  const focusTarget=V(-.15,1.17,0);
+  let lensEnabled=true, lastClick=0, pointerInside=false;
+  if('CSS' in window && CSS.supports('backdrop-filter','blur(1px)')) lensEnabled=true;
+  if(!('CSS' in window)) lensEnabled=false;
+  function updateLens() {
+    const relative=focusTarget.clone().sub(camera.position);
+    const ahead=relative.dot(camera.getWorldDirection(V()));
+    const viewport=innerWidth<650;
+    const intensity=clamp((viewport?.00048:.00036)*(7.4/Math.max(3,camera.position.distanceTo(controls.target))),.0002,.0012);
+    const dpr=renderer.getPixelRatio(), amount=clamp(intensity*ahead*ahead*dpr,0,.82);
+    canvas.style.filter=lensEnabled && amount>.015 ? `blur(${amount.toFixed(2)}px)` : 'none';
+  }
+  function resize() {
+    const w=innerWidth,h=innerHeight,dpr=Math.min(devicePixelRatio||1,w<720?1.5:1.85);
+    renderer.setPixelRatio(dpr); renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); heightUniform.value=h;
+    updateLens();
+  }
+  addEventListener('resize',resize,{passive:true}); resize();
+  controls.target.copy(targetHome); camera.position.copy(viewHome); camera.lookAt(targetHome); controls.update();
+  controls.addEventListener('change',updateLens);
+
+  const raycaster=new T.Raycaster(), pointer=new T.Vector2(), ndc=new T.Vector2(8,8), aim=V(), desired=V(), headAim=V();
+  const worldBird=V(), baseQuat=new T.Quaternion();
+  let hitPulse=0, tick=0, nextTilt=2.6, tiltValue=0, tiltFrom=0, tiltTo=0, tiltStart=-10, tiltDuration=.82;
+  let blinkStart=-10, blinkKind=0, blinkDelay=between(2.7,4.4), nextBlinkAt=between(2.7,4.4), prevTime=0, fpsStep=0, skyKick=0;
+  const tmpColor=new T.Color();
+  function blinkEnvelope(t) {
+    const close=.083, open=.118, hold=.012, total=close+hold+open;
+    if(t<0||t>total)return 0;
+    if(t<close)return smooth(0,close,t);
+    if(t<close+hold)return 1;
+    return 1-smooth(close+hold,total,t);
+  }
+  function setBlink(t,duration=0) { blinkStart=t; blinkKind=duration; }
+
+  function updateEyeGaze() {
+    if(ndc.lengthSq()>1.1){ aim.lerp(V(0,0,0),.07); }
+    else {
+      raycaster.setFromCamera(ndc,camera);
+      raycaster.ray.at(7.0,desired);
+      bird.getWorldPosition(worldBird);
+      desired.sub(worldBird).normalize();
+      // Subtle, bounded movement in the corneal image instead of a detached iris.
+      aim.lerp(V(clamp(desired.x*.029,-.027,.027),clamp(desired.y*.026,-.024,.024),0),.045);
+    }
+    for(const eye of eyes) eye.eyeMat.uniforms.uGaze.value.set(aim.x*eye.hinge,aim.y);
+  }
+  canvas.addEventListener('pointermove',e=>{
+    const rect=canvas.getBoundingClientRect();
+    ndc.set(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);
+    pointerInside=true;
+    raycaster.setFromCamera(ndc,camera);
+    canvas.toggleAttribute('data-hover',raycaster.intersectObjects(hitParts,false).length>0);
+  },{passive:true});
+  canvas.addEventListener('pointerleave',()=>{pointerInside=false;ndc.set(8,8);canvas.removeAttribute('data-hover');},{passive:true});
+  function sing(){
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    try {
+      const ac=sing.ac||(sing.ac=new AC()); if(ac.state==='suspended')ac.resume();
+      const now=ac.currentTime;
+      const master=ac.createGain(); master.gain.setValueAtTime(.0001,now); master.gain.exponentialRampToValueAtTime(.22,now+.022); master.gain.exponentialRampToValueAtTime(.0001,now+.88); master.connect(ac.destination);
+      const notes=[{f:1750,d:.13,g:.94},{f:2380,d:.095,g:.66},{f:2110,d:.16,g:.86},{f:2840,d:.20,g:.73}];
+      let at=now+.025;
+      for(let i=0;i<notes.length;i++) {
+        const n=notes[i], osc=ac.createOscillator(), env=ac.createGain(), filter=ac.createBiquadFilter();
+        osc.type='sine'; osc.frequency.setValueAtTime(n.f*.90,at); osc.frequency.exponentialRampToValueAtTime(n.f*1.08,at+n.d*.34); osc.frequency.exponentialRampToValueAtTime(n.f*.94,at+n.d);
+        const overtone=ac.createOscillator(), overtoneGain=ac.createGain(); overtone.type='sine'; overtone.frequency.value=n.f*2.03;
+        overtoneGain.gain.value=.075;
+        filter.type='bandpass'; filter.frequency.value=3200; filter.Q.value=1.4;
+        env.gain.setValueAtTime(.0001,at); env.gain.exponentialRampToValueAtTime(n.g,at+.014); env.gain.exponentialRampToValueAtTime(.0001,at+n.d+.06);
+        osc.connect(filter); overtone.connect(overtoneGain); overtoneGain.connect(filter); filter.connect(env); env.connect(master);
+        osc.start(at); overtone.start(at); osc.stop(at+n.d+.07); overtone.stop(at+n.d+.07); at+=n.d*.70;
+      }
+      const noiseBuffer=ac.createBuffer(1,Math.ceil(ac.sampleRate*.11),ac.sampleRate), channel=noiseBuffer.getChannelData(0);
+      for(let i=0;i<channel.length;i++)channel[i]=(rng()*2-1)*Math.exp(-i/channel.length*13);
+      const noise=ac.createBufferSource(), high=ac.createBiquadFilter(), ng=ac.createGain(); noise.buffer=noiseBuffer; high.type='highpass'; high.frequency.value=4400; ng.gain.setValueAtTime(.0001,at); ng.gain.exponentialRampToValueAtTime(.095,at+.006); ng.gain.exponentialRampToValueAtTime(.0001,at+.105); noise.connect(high);high.connect(ng);ng.connect(master);noise.start(at);
+    } catch(err){console.warn('Web Audio playback unavailable',err);}
+  }
+  function interact(e) {
+    const rect=canvas.getBoundingClientRect();
+    ndc.set(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);
+    raycaster.setFromCamera(ndc,camera);
+    const intersections=raycaster.intersectObjects(hitParts,false);
+    if(intersections.length){ sing(); hitPulse=1; if(Math.random()<.26)setBlink(tick,.33); }
+  }
+  let pressPoint=null;
+  canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;lastClick=performance.now();pressPoint={x:e.clientX,y:e.clientY,id:e.pointerId};});
+  canvas.addEventListener('pointerup',e=>{if(!pressPoint||pressPoint.id!==e.pointerId)return;const moved=Math.hypot(e.clientX-pressPoint.x,e.clientY-pressPoint.y);pressPoint=null;if(moved<8)interact(e);});
+  canvas.addEventListener('pointercancel',()=>{pressPoint=null;});
+  canvas.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='Enter'){e.preventDefault();sing();hitPulse=1;}});
+
+  const clock=new T.Clock();
+  function frame() {
+    requestAnimationFrame(frame);
+    const raw=clock.getDelta(), dt=Math.min(raw,.055);
+    if(raw>.12) skyKick=Math.max(skyKick,raw);
+    tick+=dt; uTime.value=tick;
+    if(!reducedMotion.matches) {
+      const breath=Math.sin(tick*1.33)*.0078+Math.sin(tick*2.67+.4)*.0029+Math.sin(tick*.57)*.0036;
+      torso.scale.set(1+breath*.44,1+breath*.93,1+breath*.50);
+      torso.position.y=1.11+breath*.33;
+      torso.rotation.z=.009*Math.sin(tick*.71)+.004*Math.sin(tick*1.9);
+      bird.position.y=.009*Math.sin(tick*1.05)+.0035*Math.sin(tick*2.21+.4);
+      const grip=Math.sin(tick*1.2+.7)*.010+Math.sin(tick*3.1)*.0028;
+      feet.forEach((f,i)=>{f.rotation.x=grip*(i?-.8:1);f.rotation.z=grip*.28;});
+      wings.forEach((w,i)=>{w.rotation.y=(i?1:-1)*(.009*Math.sin(tick*1.5+i)+.002*Math.sin(tick*5));});
+      tail.rotation.x=.012*Math.sin(tick*.73+.7); tail.rotation.z=.008*Math.sin(tick*.91);
+    }
+    hitPulse*=Math.exp(-dt*8.3); uRuffle.value=hitPulse;
+    if(tick>=nextTilt) {
+      tiltFrom=tiltValue; tiltTo=between(-.17,.17); tiltStart=tick; tiltDuration=between(.62,.91); nextTilt=tick+between(2.1,3.9);
+      if(rng()<.40)blinkStart=tick+between(.13,.43);
+    }
+    const u=clamp((tick-tiltStart)/tiltDuration,0,1);
+    const ease=u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
+    tiltValue=lerp(tiltFrom,tiltTo,ease);
+    if(tick>=tiltStart+tiltDuration && Math.abs(tiltTo)<.043 && tick>nextTilt-.12){tiltFrom=tiltTo;tiltTo=sign()*between(.073,.14);}
+    head.getWorldQuaternion(baseQuat);
+    let xTrack=0,yTrack=0;
+    if(pointerInside&&ndc.lengthSq()<1.1) {
+      xTrack=clamp(ndc.x*.052,-.060,.060);
+      yTrack=clamp(ndc.y*.035,-.032,.038);
+    }
+    const qHead=new T.Quaternion().setFromEuler(new T.Euler(yTrack,0,-tiltValue-xTrack,'YXZ'));
+    head.quaternion.slerp(qHead,1-Math.exp(-dt*5.8));
+    updateEyeGaze();
+    // Separate the next deadline from the active sweep so every blink visibly closes.
+    if(tick>=nextBlinkAt) {
+      blinkStart=tick; blinkKind=0; blinkDelay=between(2.7,4.4); nextBlinkAt=tick+blinkDelay;
+    }
+    const blinkT=tick-blinkStart;
+    uBlinkProgress.value=blinkEnvelope(blinkT);
+    dustMotes.forEach(({mote,phase,speed,origin})=>{
+      if(!reducedMotion.matches) {mote.position.y=origin.y+Math.sin(tick*speed+phase)*.045;mote.position.x=origin.x+Math.sin(tick*speed*.58+phase)*.033;}
+    });
+    controls.update();
+    if(++fpsStep%4===0) updateLens();
+    renderer.render(scene,camera);
+  }
+  frame();
+}
+</script>
+</body>
+</html>
