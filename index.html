@@ -223,7 +223,7 @@ function createWorld(T, OrbitControls) {
       sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>',/* glsl */`
         #include <begin_vertex>
         #ifdef USE_INSTANCING
-          vCoat=instanceMatrix[3].xyz;
+          vCoat=instanceMatrix[3].xyz+instanceMatrix[1].xyz*position.y*.70+instanceMatrix[0].xyz*position.x*.45;
           vSeed=fract(sin(dot(vCoat,vec3(63.7,29.3,15.1)))*43758.5453);
           vTip=clamp(position.y,0.,1.);
           float pulse=sin(1.45*uTime+5.1*vCoat.x+7.7*vCoat.y+vSeed*6.283)*.72+sin(2.3*uTime+vSeed*11.0)*.28;
@@ -241,13 +241,19 @@ function createWorld(T, OrbitControls) {
         vec3 cream=vec3(.88,.81,.70), white=vec3(.988,.979,.955);
         vec3 feather=mix(cream,white,clamp(.76+n*1.09,0.,1.));
         ${isHead ? `
-          float nape=smoothstep(.14,.56,-vCoat.x+.09*vCoat.y+n*.12)*smoothstep(-.17,.26,vCoat.y);
-          feather=mix(feather,vec3(.65,.60,.55),nape*.48);
+          // The caudatus form has a snowy crown and a narrow dark stripe
+          // running from behind the eye down the lateral nape (not a black cap).
+          float nx=vCoat.x/.60, ny=vCoat.y/.535, nz=abs(vCoat.z)/.52;
+          float stripeCenterY=.018-.045*nx;
+          float stripeRadius=length(vec2((nx+.14)/.66,(ny-stripeCenterY)/.235));
+          float lateralSurface=smoothstep(.61,.85,nz);
+          float nape=(1.-smoothstep(.68,1.10,stripeRadius))*lateralSurface;
+          feather=mix(feather,vec3(.105,.091,.087)*(1.+n*.10),nape*.90);
         ` : `
           float mantle=smoothstep(.05,.51,vCoat.y+n*.19)*smoothstep(.34,-.49+ .001,vCoat.x);
           float flank=smoothstep(.04,.52,abs(vCoat.z))*smoothstep(.29,-.44+.001,vCoat.y)*smoothstep(.27,-.66+.001,vCoat.x);
           feather=mix(feather,vec3(.23,.20,.185)*(1.+n*.46),mantle*.84);
-          feather=mix(feather,vec3(.72,.405,.37)*(1.+n*.30),flank*.92);
+          feather=mix(feather,vec3(.76,.445,.405)*(1.+n*.22),flank*.88);
         `.replace('smoothstep(.34,-.49+ .001,vCoat.x)','(1.-smoothstep(-.49,.34,vCoat.x))').replace('smoothstep(.29,-.44+.001,vCoat.y)','(1.-smoothstep(-.44,.29,vCoat.y))').replace('smoothstep(.27,-.66+.001,vCoat.x)','(1.-smoothstep(-.66,.27,vCoat.x))')}
         ${instanced?'feather*=mix(.91,1.015,smoothstep(.02,.94,vTip))*(.975+.05*vSeed);':''}
         diffuseColor.rgb*=feather;
@@ -279,7 +285,8 @@ function createWorld(T, OrbitControls) {
   const tuftGeo=gridMesh(7,7,(t,v)=>{
     const a=TAU*v;
     const shoulders=smooth(.025,.24,t)*(1.-smooth(.76,1.,t));
-    const w=(.32+.68*shoulders)*(.90-.20*t);
+    const tipFade=1.-.97*smooth(.86,1.,t);
+    const w=(.12+.88*shoulders)*(.90-.20*t)*tipFade;
     return V(Math.cos(a)*.43*w+.11*Math.sin(PI*t)*t,t,.12*t*t+Math.sin(a)*.24*w);
   },true);
   function ellipsoidPoint(n,r,head) {
