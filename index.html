@@ -99,8 +99,8 @@ function createWorld(T, OrbitControls) {
   renderer.shadowMap.type = T.PCFShadowMap;
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(34, 1, .055, 95);
-  const viewHome = new T.Vector3(2.85, 2.26, 7.55);
-  const targetHome = new T.Vector3(-.38, 1.13, 0);
+  const viewHome = new T.Vector3(-4.45, 2.34, 6.52);
+  const targetHome = new T.Vector3(-.29, 1.02, -.34);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true; controls.dampingFactor = .075;
   controls.enablePan = false; controls.rotateSpeed = .52; controls.zoomSpeed = .72;
@@ -796,7 +796,6 @@ function createWorld(T, OrbitControls) {
     env.add(m); m.castShadow=true; m.receiveShadow=true; return radius;
   }
   const branchRadius=log(branchCurve,.36,.17,mainBranchRows);
-  const footStations=[.20,-.34];
   // Sample the two triangles used by the rendered bark mesh. Feet and snow
   // meet the same surface even where the procedural bark ridges are sharp.
   function mainBarkSurface(t,angle) {
@@ -812,6 +811,50 @@ function createWorld(T, OrbitControls) {
     if(u+v<=1) return vertex(i,j).multiplyScalar(1-u-v).addScaledVector(left,u).addScaledVector(right,v);
     return vertex(i+1,j+1).multiplyScalar(u+v-1).addScaledVector(left,1-v).addScaledVector(right,1-u);
   }
+  function branchStation(x) {
+    let lo=0, hi=1;
+    for(let i=0;i<20;i++) {
+      const mid=(lo+hi)*.5;
+      if(branchCurve.getPoint(mid).x<x) lo=mid;
+      else hi=mid;
+    }
+    return (lo+hi)*.5;
+  }
+  function liftedBarkPoint(t,angle,height) {
+    const p=mainBarkSurface(t,angle);
+    const outward=p.clone().sub(branchCurve.getPoint(t)).normalize();
+    return p.addScaledVector(outward,height);
+  }
+  // The model faces local +X. Derive the same heading for the body and both
+  // feet from the perch, with a small lead along the uphill side of the branch.
+  const stanceStation=branchStation(-.07);
+  const stanceCenter=branchCurve.getPoint(stanceStation);
+  const branchAlong=branchCurve.getTangent(stanceStation).setY(0).normalize();
+  const branchAcross=branchAlong.clone().cross(up);
+  const stanceForward=branchAcross.clone().addScaledVector(branchAlong,.27).normalize();
+  const stanceSide=stanceForward.clone().cross(up);
+  const stanceYaw=-Math.atan2(stanceForward.z,stanceForward.x);
+  const branchSpeed=branchCurve.getPoint(stanceStation+.001).distanceTo(branchCurve.getPoint(stanceStation-.001))/.002;
+
+  // Fit each ankle to the actual bark triangles below its intended stance point.
+  function plantFoot(side) {
+    const target=stanceCenter.clone().addScaledVector(stanceForward,-.09).addScaledVector(stanceSide,side*.205);
+    let station=branchStation(target.x), angle=0;
+    for(let i=0;i<8;i++) {
+      const error=target.clone().sub(liftedBarkPoint(station,angle,.030)).setY(0);
+      station+=error.dot(branchAlong)/branchSpeed;
+      angle=clamp(angle+error.dot(branchAcross)/(.30*Math.cos(angle)),-.97,.97);
+    }
+    return {side,station,angle,ankle:liftedBarkPoint(station,angle,.030)};
+  }
+  const plantedFeet=[plantFoot(1),plantFoot(-1)];
+  const birdRestHeight=(plantedFeet[0].ankle.y+plantedFeet[1].ankle.y)*.5-.252;
+  const birdRestPosition=V(stanceCenter.x,birdRestHeight,stanceCenter.z);
+  bird.position.copy(birdRestPosition);
+  bird.rotation.y=stanceYaw;
+  const bareBarkStart=Math.min(plantedFeet[0].ankle.x,plantedFeet[1].ankle.x)-.155;
+  const bareBarkEnd=Math.max(plantedFeet[0].ankle.x,plantedFeet[1].ankle.x)+.17;
+
   const snowMat=standard(0xffffff,.81);
   snowMat.onBeforeCompile=sh=>{
     sh.vertexShader='varying vec3 vSnow;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vSnow=position;');
@@ -844,8 +887,8 @@ function createWorld(T, OrbitControls) {
       const lumps=.92+.21*Math.cos(t*24+phase)+.102*Math.sin(t*66+angle*5.1)+.052*Math.sin(t*136+angle*12)+.036*Math.sin(t*174+angle*28);
       let depth=thick*lumps*taper*crown-.015*(1-crown*taper);
       if(onPerch) {
-        const distance=Math.max(footStations[1]-p.x,p.x-footStations[0],0);
-        depth=lerp(-.026,depth,smooth(.115,.32,distance));
+        const distance=Math.max(bareBarkStart-p.x,p.x-bareBarkEnd,0);
+        depth=lerp(-.026,depth,smooth(0,.20,distance));
       }
       return p.addScaledVector(pathBasis(curve,f).y,depth);
     },true);
@@ -916,22 +959,6 @@ function createWorld(T, OrbitControls) {
   // breath or weight shift cannot slide contact points off the perch.
   const feet=[], footMat=standard(0x544745,.77), claws=standard(0x28242a,.48), scales=standard(0x725d57,.85);
   const perchFeet=new T.Group(); env.add(perchFeet);
-  const birdRestHeight=-.125;
-  bird.position.y=birdRestHeight;
-  function branchStation(x) {
-    let lo=0, hi=1;
-    for(let i=0;i<20;i++) {
-      const mid=(lo+hi)*.5;
-      if(branchCurve.getPoint(mid).x<x) lo=mid;
-      else hi=mid;
-    }
-    return (lo+hi)*.5;
-  }
-  function liftedBarkPoint(t,angle,height) {
-    const p=mainBarkSurface(t,angle);
-    const outward=p.clone().sub(branchCurve.getPoint(t)).normalize();
-    return p.addScaledVector(outward,height);
-  }
   function taperedTube(parent,material,pointAt,radiusAt,rows) {
     const path=spline(Array.from({length:rows+1},(_,k)=>pointAt(k/rows)));
     const frames=path.computeFrenetFrames(rows,false);
@@ -943,30 +970,37 @@ function createWorld(T, OrbitControls) {
     const mesh=new T.Mesh(g,material); mesh.castShadow=true; mesh.receiveShadow=true; parent.add(mesh);
     return path;
   }
-  for(const [index,x] of footStations.entries()) {
-    const station=branchStation(x), top=index===0?.13:-.22;
-    const ankle=liftedBarkPoint(station,top,.033);
-    const pad=oval(perchFeet,footMat,liftedBarkPoint(station,top,.027),V(.047,.031,.042));
-    pad.castShadow=true; pad.receiveShadow=true;
-    const tarsus=new T.Group(); tarsus.position.copy(ankle); perchFeet.add(tarsus);
-    tube(tarsus,[V(),V(.020,.28,.006),V(-.016,.67,-.027),V(0,1,0)],.023,footMat,16).castShadow=true;
-    const hip=V(x-.103,.523,index===0?.21:-.125);
+  for(const {side,station,angle,ankle} of plantedFeet) {
+    const pad=oval(perchFeet,footMat,liftedBarkPoint(station,angle,.024),V(.044,.027,.043));
+    pad.rotation.y=stanceYaw;
+    pad.castShadow=true;
+    pad.receiveShadow=true;
+    const tarsus=new T.Group();
+    tarsus.position.copy(ankle);
+    perchFeet.add(tarsus);
+    tube(tarsus,[V(),V(-.009,.32,.001),V(.012,.68,.003),V(0,1,0)],.021,footMat,16).castShadow=true;
+    const hip=V(-.211,.513,side*.193);
     feet.push({ankle,tarsus,hip});
     const digits=[
-      {spread:-.078,sweep:.97,radius:.018}, {spread:.005,sweep:1.17,radius:.020},
-      {spread:.087,sweep:1.00,radius:.017}, {spread:-.05,sweep:-1.05,radius:.019}
+      {spread:-.068,reach:.225,radius:.017},
+      {spread:0,reach:.256,radius:.019},
+      {spread:.067,reach:.223,radius:.016},
+      {spread:side*.018,reach:-.205,radius:.018}
     ];
-    for(const {spread,sweep,radius} of digits) {
-      const at=p=>station+spread*(.19+.81*p)/10;
-      const angleAt=p=>top+sweep*p;
-      const radiusAt=p=>radius*(1-.46*p);
+    for(const {spread,reach,radius} of digits) {
+      // Unroll the bark locally. Front digits follow the bird's heading
+      // while the hallux wraps in the opposite direction.
+      const travel=stanceForward.clone().multiplyScalar(reach).addScaledVector(stanceSide,spread);
+      const step=travel.dot(branchAlong)/branchSpeed;
+      const sweep=travel.dot(branchAcross)/branchRadius(station);
+      const radiusAt=p=>radius*(1-.43*p);
       function toePoint(p) {
-        const toe=liftedBarkPoint(at(p),angleAt(p),radiusAt(p)+.003);
-        return ankle.clone().lerp(toe,smooth(0,.32,p));
+        const bend=lerp(.014,.003,smooth(0,.42,p));
+        return liftedBarkPoint(station+step*p,angle+sweep*p,radiusAt(p)+bend);
       }
       const toePath=taperedTube(perchFeet,footMat,toePoint,radiusAt,15);
       for(let k=1;k<=6;k++) {
-        const f=.18+k*.112, t=at(f);
+        const f=.18+k*.112, t=station+step*f;
         const p=toePath.getPoint(f), tangent=toePath.getTangent(f);
         const outward=p.clone().sub(branchCurve.getPoint(t)).normalize();
         const scale=oval(perchFeet,scales,p.addScaledVector(outward,radiusAt(f)*.76),V(radiusAt(f)*.92,.0045,.0094));
@@ -974,17 +1008,20 @@ function createWorld(T, OrbitControls) {
         const normal=tangent.clone().cross(cross).normalize();
         scale.quaternion.setFromRotationMatrix(new T.Matrix4().makeBasis(cross,normal,tangent));
       }
-      const nailLength=Math.sign(sweep)*.34;
+      const nailSweep=Math.sign(reach)*.34;
+      const endHeight=radiusAt(1)+.003;
       taperedTube(perchFeet,claws,p=>{
-        const f=at(1)+Math.sign(spread)*.0012*p;
-        return liftedBarkPoint(f,angleAt(1)+nailLength*p,.014*(1-p)**1.3-.002*p);
-      },p=>.011*(1-p)**.88+.0009,10);
+        const t=station+step*(1+.24*p);
+        const a=angle+sweep+nailSweep*p;
+        return liftedBarkPoint(t,a,lerp(endHeight,-.001,smooth(0,1,p)));
+      },p=>.010*(1-p)**.88+.0009,10);
     }
   }
   const legDirection=V();
   function updateLegs() {
+    bird.updateWorldMatrix(true,false);
     for(const {ankle,tarsus,hip} of feet) {
-      legDirection.copy(hip).add(bird.position).sub(ankle);
+      legDirection.copy(hip).applyMatrix4(bird.matrixWorld).sub(ankle);
       tarsus.scale.y=legDirection.length();
       tarsus.quaternion.setFromUnitVectors(up,legDirection.normalize());
     }
@@ -1020,8 +1057,9 @@ function createWorld(T, OrbitControls) {
   controls.target.copy(targetHome); camera.position.copy(viewHome); camera.lookAt(targetHome); controls.update();
   controls.addEventListener('change',updateLens);
 
-  const raycaster=new T.Raycaster(), pointer=new T.Vector2(), ndc=new T.Vector2(8,8), aim=V(), desired=V(), headAim=V();
-  const worldBird=V(), baseQuat=new T.Quaternion();
+  const raycaster=new T.Raycaster(), ndc=new T.Vector2(8,8), aim=V(), desired=V();
+  const worldBird=V(), cameraRight=V();
+  const headEuler=new T.Euler(0,0,0,'YZX'), headTarget=new T.Quaternion();
   let tick=0, nextTilt=2.6, tiltValue=0, tiltFrom=0, tiltTo=0, tiltStart=-10, tiltDuration=.82;
   let blinkStart=-10, blinkKind=0, blinkDelay=between(2.7,4.4), nextBlinkAt=between(2.7,4.4), prevTime=0, fpsStep=0, skyKick=0;
   const tmpColor=new T.Color();
@@ -1123,8 +1161,8 @@ function createWorld(T, OrbitControls) {
       torso.scale.set(1+breath*.44,1+breath*.93,1+breath*.50);
       torso.position.y=1.11+breath*.33;
       torso.rotation.z=.009*Math.sin(tick*.71)+.004*Math.sin(tick*1.9);
-      bird.position.y=birdRestHeight+.009*Math.sin(tick*1.05)+.0035*Math.sin(tick*2.21+.4);
-      bird.position.x=.005*Math.sin(tick*1.2+.7);
+      bird.position.copy(birdRestPosition).addScaledVector(stanceForward,.004*Math.sin(tick*1.2+.7));
+      bird.position.y+=.009*Math.sin(tick*1.05)+.0035*Math.sin(tick*2.21+.4);
       updateLegs();
       wings.forEach((w,i)=>{w.rotation.y=(i?1:-1)*(.009*Math.sin(tick*1.5+i)+.002*Math.sin(tick*5));});
       tail.rotation.x=.012*Math.sin(tick*.73+.7); tail.rotation.z=.008*Math.sin(tick*.91);
@@ -1132,21 +1170,21 @@ function createWorld(T, OrbitControls) {
     updateBill(dt);
     uMotion.value=reducedMotion.matches?0:1;
     if(tick>=nextTilt) {
-      tiltFrom=tiltValue; tiltTo=between(-.17,.17); tiltStart=tick; tiltDuration=between(.62,.91); nextTilt=tick+between(2.1,3.9);
+      tiltFrom=tiltValue; tiltTo=between(-.11,.11); tiltStart=tick; tiltDuration=between(.62,.91); nextTilt=tick+between(2.1,3.9);
       if(rng()<.40)blinkStart=tick+between(.13,.43);
     }
     const u=clamp((tick-tiltStart)/tiltDuration,0,1);
     const ease=u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
     tiltValue=lerp(tiltFrom,tiltTo,ease);
-    if(tick>=tiltStart+tiltDuration && Math.abs(tiltTo)<.043 && tick>nextTilt-.12){tiltFrom=tiltTo;tiltTo=sign()*between(.073,.14);}
-    head.getWorldQuaternion(baseQuat);
-    let xTrack=0,yTrack=0;
+    if(tick>=tiltStart+tiltDuration && Math.abs(tiltTo)<.043 && tick>nextTilt-.12){tiltFrom=tiltTo;tiltTo=sign()*between(.056,.095);}
+    let yawTrack=0, pitchTrack=0;
     if(pointerInside&&ndc.lengthSq()<1.1) {
-      xTrack=clamp(ndc.x*.052,-.060,.060);
-      yTrack=clamp(ndc.y*.035,-.032,.038);
+      cameraRight.setFromMatrixColumn(camera.matrixWorld,0);
+      yawTrack=-ndc.x*.13*cameraRight.dot(stanceSide);
+      pitchTrack=ndc.y*.049;
     }
-    const qHead=new T.Quaternion().setFromEuler(new T.Euler(yTrack,0,-tiltValue-xTrack,'YXZ'));
-    head.quaternion.slerp(qHead,1-Math.exp(-dt*5.8));
+    headEuler.set(reducedMotion.matches?0:tiltValue,yawTrack,pitchTrack);
+    head.quaternion.slerp(headTarget.setFromEuler(headEuler),1-Math.exp(-dt*5.8));
     updateEyeGaze();
     // Separate the next deadline from the active sweep so every blink visibly closes.
     if(tick>=nextBlinkAt) {
