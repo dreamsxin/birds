@@ -14,14 +14,29 @@
   canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; outline: none; }
   canvas[data-hover] { cursor: pointer; } canvas:active { cursor: grabbing; }
   canvas:focus-visible { outline: 1px solid #e1f3ed; outline-offset: -5px; }
-  #hints { position: fixed; top: max(26px, env(safe-area-inset-top)); right: max(28px, env(safe-area-inset-right)); display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; color: #f2f7f4; background: #182c2e93; border: 1px solid #d9f5ef27; border-radius: 13px; pointer-events: none; box-shadow: 0 8px 34px #0a171c26; backdrop-filter: blur(14px); font-size: 11px; letter-spacing: .1em; }
+  #hud { position: fixed; top: max(26px, env(safe-area-inset-top)); right: max(28px, env(safe-area-inset-right)); display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; color: #f2f7f4; background: #182c2e93; border: 1px solid #d9f5ef27; border-radius: 13px; box-shadow: 0 8px 34px #0a171c26; backdrop-filter: blur(14px); font-size: 11px; letter-spacing: .1em; }
+  #hints { display: flex; flex-direction: column; gap: inherit; pointer-events: none; }
+  #quality { width: min(188px, calc(100vw - 64px)); border-top: 1px solid #d9f5ef27; padding-top: 9px; letter-spacing: .04em; }
+  #quality summary { display: flex; align-items: center; justify-content: space-between; min-height: 25px; cursor: pointer; list-style: none; font-weight: 600; }
+  #quality summary::-webkit-details-marker { display: none; }
+  #quality summary::after { content: '+'; color: #b5d9cf; font-size: 16px; font-weight: 400; }
+  #quality[open] summary::after { content: '−'; }
+  .quality-controls { display: grid; gap: 9px; padding-top: 8px; }
+  .quality-label, .quality-scale { display: flex; justify-content: space-between; gap: 8px; }
+  .quality-label output { color: #c5e8dd; font-variant-numeric: tabular-nums; }
+  .quality-scale { color: #bad1cb; font-size: 10px; }
+  .quality-controls input { width: 100%; height: 24px; margin: 0; accent-color: #bdded3; cursor: pointer; }
+  .quality-controls button { justify-self: end; padding: 5px 9px; background: #b5d9cf16; border: 1px solid #d9f5ef36; border-radius: 6px; color: inherit; font: inherit; cursor: pointer; }
+  #quality :focus-visible { outline: 2px solid #d7f0e8; outline-offset: 3px; }
+  @media (max-height: 380px) { #hud { max-height: calc(100dvh - 48px); overflow-y: auto; } }
+  @media (pointer: coarse) { #quality summary, .quality-controls input, .quality-controls button { min-height: 34px; } }
   .hint { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
   .hint svg { width: 15px; height: 15px; fill: none; stroke: #b5d9cf; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
   .hint .touch { display: none; }
   #fallback { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; width: min(84%, 70ch); color: #eff7f4; text-align: center; font-size: 14px; line-height: 1.8; }
   #fallback[hidden] { display: none; }
   @media (pointer: coarse) { .hint .touch { display: inline; } .hint .mouse { display: none; } }
-  @media (max-width: 600px) { #hints { top: max(15px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); gap: 9px; padding: 11px 12px; font-size: 10px; } }
+  @media (max-width: 600px) { #hud { top: max(15px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); gap: 9px; padding: 11px 12px; font-size: 10px; } }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
@@ -29,10 +44,27 @@
 </head>
 <body>
 <main id="stage" aria-label="冬日雪松枝头的北长尾山雀"></main>
-<aside id="hints" aria-label="互动提示">
+<aside id="hud" aria-label="观鸟提示与设置">
+<div id="hints" aria-label="互动提示">
   <span class="hint"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5Z"/><circle cx="10" cy="10" r="2"/></svg><span class="mouse">移动鼠标吸引视线</span><span class="touch">拖动环绕观察</span></span>
   <span class="hint"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 17c4-5 7-7 12-10M6 14c-2-5 4-10 11-11 0 7-4 13-10 12m4-4.5.5-3.5"/></svg><span>点击山雀听鸟鸣</span></span>
   <span class="hint"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="4.8"/><path d="m12 12 4 4M6.5 8.5h4m-2-2v4"/></svg><span class="mouse">拖动环绕 · 滚轮缩放</span><span class="touch">双指捏合微距缩放</span></span>
+</div>
+<details id="quality" hidden>
+  <summary>羽毛设置</summary>
+  <div class="quality-controls">
+    <div>
+      <div class="quality-label"><label for="feather-count">羽毛几何数量</label><output id="count-value" for="feather-count">12,500</output></div>
+      <input id="feather-count" type="range" min="3000" max="15000" step="500" value="12500">
+    </div>
+    <div>
+      <div class="quality-label"><label for="feather-realism">羽毛真实度</label><output id="realism-value" for="feather-realism">80%</output></div>
+      <input id="feather-realism" type="range" min="0" max="100" step="1" value="80" aria-describedby="realism-scale">
+      <div class="quality-scale" id="realism-scale"><span>简洁羽面</span><span>细羽与绒边</span></div>
+    </div>
+    <button type="button" id="quality-reset">恢复默认</button>
+  </div>
+</details>
 </aside>
 <p id="fallback" role="status" hidden></p>
 <noscript><p role="status">请开启 JavaScript，以进入雪松枝头的观鸟场景。</p></noscript>
@@ -51,7 +83,7 @@ try {
 
 function createWorld(T, OrbitControls) {
   const canvas = document.createElement('canvas');
-  const gl = canvas.getContext('webgl2', { alpha:false, antialias:false, powerPreference:'high-performance' });
+  const gl = canvas.getContext('webgl2', { alpha:false, antialias:true, powerPreference:'high-performance' });
   if (!gl) throw new Error('WebGL 2 is not available');
   canvas.tabIndex = 0;
   canvas.setAttribute('aria-label', '互动北长尾山雀。按空格或回车可听鸟鸣。');
@@ -80,7 +112,10 @@ function createWorld(T, OrbitControls) {
   const between = (a,b) => lerp(a,b,rng());
   const sign = () => rng()<.5 ? -1 : 1;
   const up = V(0,1,0);
-  const uTime = {value:0}, uRuffle = {value:0}, uBlinkProgress = {value:0};
+  const uTime = {value:0}, uBlinkProgress = {value:0};
+  const uRealism = {value:.8}, uMotion = {value:1};
+  const uRuffleOrigin = {value:V()}, uRuffleStart = {value:-10};
+  const hasMSAA = gl.getContextAttributes()?.antialias === true;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   const hemi = new T.HemisphereLight(0xe4f4ff, 0x77747f, 1.76);
@@ -212,60 +247,109 @@ function createWorld(T, OrbitControls) {
   }
   particles(false); particles(true);
 
-  // Parametric feather/body coat. Broad, soft, curved lancelets lie close to the
-  // surface; only a sparse guard layer lifts slightly to soften the silhouette.
+  // Layered feather vanes use opaque depth writes and sample coverage at their fringes.
   function plumageMaterial(isHead, instanced) {
-    const mat=new T.MeshStandardMaterial({color:0xffffff,roughness:instanced?.94:.97,metalness:0});
+    const mat=new T.MeshStandardMaterial({color:0xffffff,roughness:.98,metalness:0,
+      side:instanced?T.DoubleSide:T.FrontSide,alphaToCoverage:instanced&&hasMSAA});
     mat.customProgramCacheKey=()=>`plumage-${Number(isHead)}-${Number(instanced)}`;
     mat.onBeforeCompile=sh=>{
-      Object.assign(sh.uniforms,{uTime,uRuffle});
-      sh.vertexShader=`uniform float uTime,uRuffle; varying vec3 vCoat,vFeatherView; varying float vTip,vSeed;\n`+sh.vertexShader;
-      sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>',/* glsl */`
-        #include <begin_vertex>
-        #ifdef USE_INSTANCING
-          vCoat=instanceMatrix[3].xyz+instanceMatrix[1].xyz*position.y*.70+instanceMatrix[0].xyz*position.x*.45;
-          vSeed=fract(sin(dot(vCoat,vec3(63.7,29.3,15.1)))*43758.5453);
-          vTip=clamp(position.y,0.,1.);
-          float pulse=sin(1.45*uTime+5.1*vCoat.x+7.7*vCoat.y+vSeed*6.283)*.72+sin(2.3*uTime+vSeed*11.0)*.28;
-          float softTip=smoothstep(.12,1.0,vTip);
-          transformed.x+=softTip*(.045*pulse+.11*uRuffle);
-          transformed.z+=softTip*(.035*pulse+.17*uRuffle*(.65+.35*sin(vSeed*6.283)));
-        #else
-          vCoat=position; vTip=1.; vSeed=.5;
-        #endif
-      `).replace('#include <project_vertex>',`#include <project_vertex>\n vFeatherView=-mvPosition.xyz;`);
-      sh.fragmentShader=`varying vec3 vCoat,vFeatherView; varying float vTip,vSeed;\n${perlin}\n`+sh.fragmentShader;
+      Object.assign(sh.uniforms,{uTime,uMotion,uRealism,uRuffleOrigin,uRuffleStart});
+      if(instanced) {
+        sh.vertexShader=/* glsl */`
+          uniform float uTime,uMotion,uRealism,uRuffleStart;
+          uniform vec3 uRuffleOrigin;
+          attribute vec2 aFeather;
+          varying vec2 vVaneUV;
+          varying vec3 vRootNormal;
+          varying float vSeed,vLoose;
+        `+sh.vertexShader;
+        sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>',/* glsl */`
+          #include <begin_vertex>
+          vec3 root=instanceMatrix[3].xyz;
+          vSeed=aFeather.x;
+          vLoose=aFeather.y;
+          vVaneUV=uv;
+          vRootNormal=normalize(normalMatrix*instanceMatrix[2].xyz);
+          float tip=uv.y;
+          float flex=tip*tip;
+          float pulse=.67*sin(uTime*2.1-root.x*5.2+root.y*3.3+vSeed*1.8)
+                     +.25*sin(uTime*4.9+vSeed*6.28)+.08*sin(uTime*15.2+vSeed*20.);
+          float age=uTime-uRuffleStart;
+          float ruffle=0.0;
+          if(age>=0.0 && age<1.5 && uMotion>0.0) {
+            float delay=distance((modelMatrix*vec4(root,1.)).xyz,uRuffleOrigin)*.30;
+            float localAge=age-delay;
+            float t=max(localAge,0.0);
+            ruffle=smoothstep(0.0,.045,localAge)*exp(-t*6.4)*sin(t*23.);
+          }
+          transformed.x+=flex*uMotion*(pulse*.035+ruffle*.12*vLoose);
+          transformed.y+=flex*(uRealism-.5)*(.10+.18*vLoose);
+          transformed.z+=flex*(uRealism*(.10+.32*vLoose+vSeed*.13)+uMotion*(pulse*.09+ruffle*(.68+.63*vLoose)));
+          vCoat=root+(mat3(instanceMatrix)*position)*.57;
+        `);
+        sh.fragmentShader=/* glsl */`
+          uniform float uRealism;
+          varying vec2 vVaneUV;
+          varying vec3 vRootNormal;
+          varying float vSeed,vLoose;
+        `+sh.fragmentShader;
+      } else {
+        sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vCoat=position;');
+      }
+      sh.vertexShader='varying vec3 vCoat;\n'+sh.vertexShader;
+      sh.fragmentShader=`varying vec3 vCoat;\n${perlin}\n`+sh.fragmentShader;
       sh.fragmentShader=sh.fragmentShader.replace('#include <color_fragment>',/* glsl */`
         #include <color_fragment>
-        float n=perlin3(vCoat*5.2)*.72+perlin3(vCoat*14.0)*.28;
-        vec3 cream=vec3(.88,.81,.70), white=vec3(.988,.979,.955);
-        vec3 feather=mix(cream,white,clamp(.76+n*1.09,0.,1.));
+        float n=perlin3(vCoat*5.2)*.76+perlin3(vCoat*13.0)*.24;
+        vec3 cream=vec3(.86,.785,.685), white=vec3(.97,.958,.929);
+        vec3 feather=mix(cream,white,clamp(.70+n*.65,0.,1.));
         ${isHead ? `
-          // The caudatus form has a snowy crown and a narrow dark stripe
-          // running from behind the eye down the lateral nape (not a black cap).
           float nx=vCoat.x/.60, ny=vCoat.y/.535, nz=abs(vCoat.z)/.52;
-          float stripeCenterY=.018-.045*nx;
-          float stripeRadius=length(vec2((nx+.14)/.66,(ny-stripeCenterY)/.235));
-          float lateralSurface=smoothstep(.61,.85,nz);
-          float nape=(1.-smoothstep(.68,1.10,stripeRadius))*lateralSurface;
-          feather=mix(feather,vec3(.105,.091,.087)*(1.+n*.10),nape*.90);
+          float napeContour=length(vec2((nx+.59)/.58,(ny-(.01-.16*nx+n*.17))/.34));
+          float nape=(1.-smoothstep(.43,1.10,napeContour))*smoothstep(.35,.72,nz);
+          feather=mix(feather,vec3(.17,.138,.127),nape*.83);
         ` : `
-          float mantle=smoothstep(.05,.51,vCoat.y+n*.19)*smoothstep(.34,-.49+ .001,vCoat.x);
-          float flank=smoothstep(.04,.52,abs(vCoat.z))*smoothstep(.29,-.44+.001,vCoat.y)*smoothstep(.27,-.66+.001,vCoat.x);
-          feather=mix(feather,vec3(.23,.20,.185)*(1.+n*.46),mantle*.84);
-          feather=mix(feather,vec3(.76,.445,.405)*(1.+n*.22),flank*.88);
-        `.replace('smoothstep(.34,-.49+ .001,vCoat.x)','(1.-smoothstep(-.49,.34,vCoat.x))').replace('smoothstep(.29,-.44+.001,vCoat.y)','(1.-smoothstep(-.44,.29,vCoat.y))').replace('smoothstep(.27,-.66+.001,vCoat.x)','(1.-smoothstep(-.66,.27,vCoat.x))')}
-        ${instanced?'feather*=mix(.91,1.015,smoothstep(.02,.94,vTip))*(.975+.05*vSeed);':''}
+          float mantle=smoothstep(.03,.54,vCoat.y+n*.18)*(1.-smoothstep(-.51,.33,vCoat.x));
+          float flank=smoothstep(.08,.52,abs(vCoat.z))*(1.-smoothstep(-.46,.24,vCoat.y))*(1.-smoothstep(-.66,.35,vCoat.x));
+          feather=mix(feather,vec3(.25,.213,.196)*(1.+n*.22),mantle*.84);
+          feather=mix(feather,vec3(.76,.445,.405)*(1.+n*.18),flank*.87);
+        `}
+        ${instanced ? `
+          float side=vVaneUV.x*2.0-1.0;
+          float tip=vVaneUV.y;
+          float fringe=uRealism*(.38+.62*vLoose);
+          float edge=max(abs(side),smoothstep(.65,1.0,tip));
+          float phase=tip*(13.0+vSeed*7.0)-abs(side)*(2.3+tip)+vSeed*4.5;
+          float detail=1.-smoothstep(.23,.72,fwidth(phase));
+          float strand=.5+.5*cos(6.283185*phase+.45*sin(phase*1.3));
+          float comb=mix(.52,strand,detail);
+          float cut=1.035-fringe*(.030+.23*comb)*smoothstep(.41,.96,edge);
+          float op=1.-smoothstep(cut-.06,cut+.045,edge);
+          float separated=smoothstep(.48,1.0,edge)*smoothstep(.48,.94,comb)*fringe;
+          float featherCoverage=op*(1.-.51*separated);
+          ${hasMSAA ? 'if(featherCoverage<.015) discard;' : 'if(featherCoverage<.45) discard;'}
+          float rootTone=mix(.954,1.003,smoothstep(.12,.88,tip));
+          feather*=rootTone*(.989+.023*vSeed)*(1.+detail*fringe*(strand-.5)*.055);
+        ` : 'feather*=.965;'}
         diffuseColor.rgb*=feather;
-      `).replace('#include <opaque_fragment>',/* glsl */`
-        vec3 viewDir=normalize(vFeatherView);
-        vec3 lightView=normalize(mat3(viewMatrix)*vec3(-.55,.48,-.66));
-        float grazing=pow(1.-clamp(abs(dot(normal,viewDir)),0.,1.),2.7);
-        float transmission=pow(max(dot(viewDir,-lightView),0.),2.1);
-        float thinness=${instanced?'(.14+.48*smoothstep(.05,1.,vTip))':'0.22'};
-        outgoingLight+=diffuseColor.rgb*vec3(1.,.84,.68)*thinness*(.13*grazing+.14*transmission*(.42+.58*grazing));
-        #include <opaque_fragment>
       `);
+      if(instanced) {
+        sh.fragmentShader=sh.fragmentShader.replace('#include <normal_fragment_begin>',/* glsl */`
+          #include <normal_fragment_begin>
+          // Blending toward the coat normal keeps tangent vanes from lighting like beads.
+          vec3 coatNormal=normalize(vRootNormal);
+          if(dot(coatNormal,normal)<0.0) normal=-normal;
+          normal=normalize(mix(coatNormal,normal,mix(.10,.31,uRealism)*(.76+.24*vLoose)));
+        `).replace('#include <opaque_fragment>',/* glsl */`
+          vec3 towardEye=normalize(vViewPosition);
+          vec3 winterLight=normalize(mat3(viewMatrix)*vec3(-.55,.48,-.66));
+          float rim=pow(1.-abs(dot(coatNormal,towardEye)),3.0);
+          float backlight=smoothstep(.15,.91,dot(towardEye,-winterLight));
+          outgoingLight+=diffuseColor.rgb*vec3(1.,.88,.73)*rim*backlight*(.11+.35*edge)*(.22+.78*uRealism);
+          #include <opaque_fragment>
+          ${hasMSAA?'gl_FragColor.a=featherCoverage;':''}
+        `);
+      }
     };
     return mat;
   }
@@ -282,13 +366,17 @@ function createWorld(T, OrbitControls) {
     const g=new T.BufferGeometry(); g.setAttribute('position',new T.Float32BufferAttribute(pos,3));
     g.setAttribute('uv',new T.Float32BufferAttribute(uv,2)); g.setIndex(idx); g.computeVertexNormals(); return g;
   }
-  const tuftGeo=gridMesh(7,7,(t,v)=>{
-    const a=TAU*v;
-    const shoulders=smooth(.025,.24,t)*(1.-smooth(.76,1.,t));
-    const tipFade=1.-.97*smooth(.86,1.,t);
-    const w=(.12+.88*shoulders)*(.90-.20*t)*tipFade;
-    return V(Math.cos(a)*.43*w+.11*Math.sin(PI*t)*t,t,.12*t*t+Math.sin(a)*.24*w);
-  },true);
+  function featherVane(isOuter) {
+    return gridMesh(isOuter?9:6,isOuter?4:3,(t,v)=>{
+      const u=v*2-1;
+      const fullness=smooth(.015,.38,t)*(1.-smooth(.52,1.,t));
+      const w=.035+.48*Math.pow(fullness,.65);
+      const sweep=(isOuter?.13:.07)*Math.sin(PI*t)*t;
+      const camber=(1-u*u)*Math.sin(PI*t)*.45;
+      const curl=t*t*(isOuter?.54:.21)+u*.28*t*t;
+      return V(u*w*(u<0?.89:1)+sweep,t,camber+curl);
+    },true);
+  }
   function ellipsoidPoint(n,r,head) {
     const waist=head ? (1-.07*n.y+.045*n.x) : (1+.13*n.x-.12*n.y);
     return V(n.x*r.x,n.y*r.y*(head?1:1+.07*n.x),n.z*r.z*waist);
@@ -301,7 +389,73 @@ function createWorld(T, OrbitControls) {
       .cross(ellipsoidPoint(n.clone().addScaledVector(b,.001).normalize(),r,head).sub(p)).normalize();
   }
   const hitParts=[];
-  function coat(parent,r,count,isHead) {
+  const coatGroups=[];
+  const maxFeathers=15000;
+  const headFraction=.41;
+  const outerFraction=.17;
+  const featherGeometries=[featherVane(false),featherVane(true)];
+  // Bit reversal visits the full latitude span even when only a prefix is drawn.
+  function distributedOrder(count) {
+    const size=2**Math.ceil(Math.log2(count)), bits=Math.log2(size), indices=[];
+    for(let i=0;i<size;i++) {
+      let reversed=0;
+      for(let b=0;b<bits;b++) reversed=(reversed<<1)|((i>>b)&1);
+      if(reversed<count) indices.push(reversed);
+    }
+    return indices;
+  }
+  function featherLayer(parent,r,count,isHead,isOuter,material) {
+    const geometry=featherGeometries[Number(isOuter)].clone();
+    const mesh=new T.InstancedMesh(geometry,material,count);
+    const featherParams=new Float32Array(count*2);
+    const golden=PI*(3-Math.sqrt(5)), eyeAxis=V(.49,.18,.85).normalize();
+    const roots=[], samples=count+(isHead?Math.ceil(count*.13):0);
+    const spacing=Math.sqrt(4*PI/samples);
+    const offset=isOuter?1.72:0;
+    for(let i=0;i<samples;i++) {
+      const y=1-2*(i+.5)/samples, a=golden*i+offset, rr=Math.sqrt(1-y*y);
+      const n=V(Math.cos(a)*rr,y,Math.sin(a)*rr);
+      const side=V(-Math.sin(a),0,Math.cos(a));
+      n.addScaledVector(side,between(-.35,.35)*spacing)
+       .addScaledVector(n.clone().cross(side),between(-.35,.35)*spacing).normalize();
+      if(isHead && (V(n.x,n.y,Math.abs(n.z)).dot(eyeAxis)>.970 || (n.x>.979 && Math.abs(n.y+.07)<.24))) continue;
+      roots.push(n);
+    }
+    if(roots.length<count) throw new Error('Not enough feather samples');
+    const order=distributedOrder(roots.length), matrix=new T.Matrix4();
+    for(let i=0;i<count;i++) {
+      const n=roots[order[i]], root=ellipsoidPoint(n,r,isHead), normal=ellipsoidNormal(n,r,isHead);
+      const belly=(1.-smooth(-.52,.24,n.y))*(isHead?.30:1);
+      const loose=isOuter ? lerp(.48,.96,belly) : lerp(.23,.59,belly);
+      const lay=isHead?V(-.69,-.74,.06*n.z):V(-1.,-.58-belly*.25,.05*n.z);
+      lay.addScaledVector(normal,-lay.dot(normal));
+      if(lay.lengthSq()<.001) lay.copy(up).cross(normal);
+      const drift=.23*Math.sin(8.*n.x+5.*n.y)*Math.cos(5.*n.z-2.*n.y);
+      lay.normalize().applyAxisAngle(normal,drift+between(-.65,.65)*loose);
+      let length=(isOuter?between(.045,.076):between(.033,.057))*(1.+.20*belly);
+      if(isHead) length*=.77;
+      const directionOnSphere=V(lay.x/r.x,lay.y/r.y,lay.z/r.z);
+      const tipOnSphere=n.clone().addScaledVector(directionOnSphere,length).normalize();
+      const rise=length*(isOuter?between(.15,.32):between(.07,.17));
+      const chord=ellipsoidPoint(tipOnSphere,r,isHead).addScaledVector(ellipsoidNormal(tipOnSphere,r,isHead),rise).sub(root);
+      const forward=chord.clone().normalize();
+      const width=(isOuter?between(.013,.027):between(.026,.045))*(isHead?.80:1.)*(1.+.15*belly);
+      const cross=forward.clone().cross(normal).normalize().applyAxisAngle(forward,between(-.30,.30)*loose);
+      const outward=cross.clone().cross(forward).normalize();
+      matrix.makeBasis(cross.multiplyScalar(width),chord,outward.multiplyScalar(isOuter?.014:.010));
+      matrix.setPosition(root.addScaledVector(normal,between(-.0035,-.0015)));
+      mesh.setMatrixAt(i,matrix);
+      featherParams[i*2]=rng();
+      featherParams[i*2+1]=loose;
+    }
+    geometry.setAttribute('aFeather',new T.InstancedBufferAttribute(featherParams,2));
+    mesh.instanceMatrix.needsUpdate=true;
+    mesh.computeBoundingSphere();
+    mesh.boundingSphere.radius+=.032; // Include wind and the clicked ruffle in the culling bound.
+    parent.add(mesh);
+    return mesh;
+  }
+  function coat(parent,r,isHead) {
     const geo=new T.SphereGeometry(1,80,56), attr=geo.getAttribute('position');
     for(let i=0;i<attr.count;i++) {
       const p=ellipsoidPoint(V(attr.getX(i),attr.getY(i),attr.getZ(i)),r,isHead);
@@ -310,49 +464,51 @@ function createWorld(T, OrbitControls) {
     geo.computeVertexNormals();
     const skin=new T.Mesh(geo,plumageMaterial(isHead,false));
     skin.castShadow=true; parent.add(skin); hitParts.push(skin);
-    const tufts=new T.InstancedMesh(tuftGeo,plumageMaterial(isHead,true),count);
-    const matrix=new T.Matrix4(), golden=PI*(3-Math.sqrt(5));
-    const eyeAxis=V(.49,.18,.85).normalize();
-    let written=0;
-    // Slight oversampling keeps the exact instance count while clearing the eyelids and bill.
-    const samples=count+(isHead ? 285 : 0);
-    for(let i=0;i<samples && written<count;i++) {
-      const y=1-2*(i+between(.18,.82))/samples, a=golden*i+between(-.36,.36), rr=Math.sqrt(1-y*y);
-      const n=V(Math.cos(a)*rr,y,Math.sin(a)*rr);
-      if(isHead && V(n.x,n.y,Math.abs(n.z)).dot(eyeAxis)>.974) continue;
-      if(isHead && n.x>.982 && Math.abs(n.y+.07)<.22) continue;
-      const p=ellipsoidPoint(n,r,isHead), N=ellipsoidNormal(n,r,isHead);
-      const preferred=isHead?V(-.96,-.27,.10*n.z):V(-1.,-.30,.06*n.z);
-      const tangent=preferred.addScaledVector(N,-preferred.dot(N));
-      if(tangent.lengthSq()<.0005) tangent.copy(up).cross(N);
-      // Most down lies along the body; a small, irregular guard-feather fraction
-      // lifts just enough to make a soft silhouette without forming sharp spikes.
-      tangent.normalize().applyAxisAngle(N,between(-.43,.43));
-      const guard=rng()<.085;
-      const lift=guard?between(.29,.43):between(.12,.24);
-      const direction=tangent.multiplyScalar(guard?between(.88,.96):between(.96,1.04)).addScaledVector(N,lift).normalize();
-      const X=direction.clone().cross(N).normalize(), Z=X.clone().cross(direction).normalize();
-      const ventral=(1.-smooth(-.52,.16,n.y))*(isHead?.20:1);
-      let length=guard?between(.034,.050):between(.022,.038);
-      length+=ventral*(guard?.014:.010);
-      if(isHead) length*=.77;
-      if(rng()>.986) length*=1.16;
-      const width=guard?between(.015,.024):between(.022,.039);
-      const depth=guard?between(.006,.010):between(.005,.008);
-      matrix.makeBasis(X.multiplyScalar(width),direction.multiplyScalar(length),Z.multiplyScalar(depth));
-      matrix.setPosition(p.addScaledVector(N,between(.001,.004)));
-      tufts.setMatrixAt(written++,matrix);
+    const headCapacity=Math.round(maxFeathers*headFraction);
+    const capacity=isHead?headCapacity:maxFeathers-headCapacity;
+    const outer=Math.round(capacity*outerFraction);
+    const material=plumageMaterial(isHead,true);
+    coatGroups.push({isHead,
+      down:featherLayer(parent,r,capacity-outer,isHead,false,material),
+      outer:featherLayer(parent,r,outer,isHead,true,material)});
+  }
+  function featherSettings() {
+    const panel=document.querySelector('#quality');
+    const count=document.querySelector('#feather-count'), realism=document.querySelector('#feather-realism');
+    const countValue=document.querySelector('#count-value'), realismValue=document.querySelector('#realism-value');
+    const format=new Intl.NumberFormat('zh-CN');
+    count.max=maxFeathers;
+    function updateCount() {
+      const total=count.valueAsNumber;
+      const headCount=Math.round(total*headFraction);
+      for(const group of coatGroups) {
+        const amount=group.isHead?headCount:total-headCount;
+        group.outer.count=Math.round(amount*outerFraction);
+        group.down.count=amount-group.outer.count;
+      }
+      countValue.value=format.format(total);
     }
-    if(written!==count) throw new Error('Not enough feather samples');
-    tufts.instanceMatrix.needsUpdate=true; tufts.computeBoundingSphere(); parent.add(tufts);
-    return tufts;
+    function updateRealism() {
+      uRealism.value=realism.valueAsNumber/100;
+      realismValue.value=`${realism.value}%`;
+    }
+    count.addEventListener('input',updateCount);
+    realism.addEventListener('input',updateRealism);
+    document.querySelector('#quality-reset').addEventListener('click',()=>{
+      count.value=count.defaultValue;
+      realism.value=realism.defaultValue;
+      updateCount(); updateRealism();
+    });
+    updateCount(); updateRealism();
+    panel.hidden=false;
   }
   const bird=new T.Group(); bird.name='北长尾山雀'; scene.add(bird);
   const torso=new T.Group(); torso.position.set(-.20,1.11,0); bird.add(torso);
-  coat(torso,V(.81,.65,.62),7400,false);
+  coat(torso,V(.81,.65,.62),false);
   const head=new T.Group(); head.position.set(.40,1.49,0); head.rotation.order='YZX'; bird.add(head);
   const headBall=new T.Group(); headBall.position.set(.10,.12,0); head.add(headBall);
-  coat(headBall,V(.6,.535,.52),5100,true);
+  coat(headBall,V(.6,.535,.52),true);
+  featherSettings();
 
   const standard=(hex,roughness=.76)=>new T.MeshStandardMaterial({color:hex,roughness});
   const unitBall=new T.SphereGeometry(1,28,20);
@@ -715,7 +871,7 @@ function createWorld(T, OrbitControls) {
 
   const raycaster=new T.Raycaster(), pointer=new T.Vector2(), ndc=new T.Vector2(8,8), aim=V(), desired=V(), headAim=V();
   const worldBird=V(), baseQuat=new T.Quaternion();
-  let hitPulse=0, tick=0, nextTilt=2.6, tiltValue=0, tiltFrom=0, tiltTo=0, tiltStart=-10, tiltDuration=.82;
+  let tick=0, nextTilt=2.6, tiltValue=0, tiltFrom=0, tiltTo=0, tiltStart=-10, tiltDuration=.82;
   let blinkStart=-10, blinkKind=0, blinkDelay=between(2.7,4.4), nextBlinkAt=between(2.7,4.4), prevTime=0, fpsStep=0, skyKick=0;
   const tmpColor=new T.Color();
   function blinkEnvelope(t) {
@@ -775,13 +931,30 @@ function createWorld(T, OrbitControls) {
     ndc.set(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);
     raycaster.setFromCamera(ndc,camera);
     const intersections=raycaster.intersectObjects(hitParts,false);
-    if(intersections.length){ sing(); hitPulse=1; if(Math.random()<.26)setBlink(tick,.33); }
+    if(intersections.length){
+      sing();
+      startRuffle(intersections[0].point);
+      if(rng()<.26)setBlink(tick,.33);
+    }
   }
   let pressPoint=null;
   canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;lastClick=performance.now();pressPoint={x:e.clientX,y:e.clientY,id:e.pointerId};});
   canvas.addEventListener('pointerup',e=>{if(!pressPoint||pressPoint.id!==e.pointerId)return;const moved=Math.hypot(e.clientX-pressPoint.x,e.clientY-pressPoint.y);pressPoint=null;if(moved<8)interact(e);});
   canvas.addEventListener('pointercancel',()=>{pressPoint=null;});
-  canvas.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='Enter'){e.preventDefault();sing();hitPulse=1;}});
+  function startRuffle(point) {
+    if(reducedMotion.matches) return;
+    uRuffleOrigin.value.copy(point);
+    uRuffleStart.value=tick;
+  }
+  const keyboardRufflePoint=V();
+  canvas.addEventListener('keydown',e=>{
+    if(e.code!=='Space'&&e.code!=='Enter') return;
+    e.preventDefault();
+    if(e.repeat) return;
+    sing();
+    torso.getWorldPosition(keyboardRufflePoint);
+    startRuffle(keyboardRufflePoint);
+  });
 
   const clock=new T.Clock();
   function frame() {
@@ -800,7 +973,7 @@ function createWorld(T, OrbitControls) {
       wings.forEach((w,i)=>{w.rotation.y=(i?1:-1)*(.009*Math.sin(tick*1.5+i)+.002*Math.sin(tick*5));});
       tail.rotation.x=.012*Math.sin(tick*.73+.7); tail.rotation.z=.008*Math.sin(tick*.91);
     }
-    hitPulse*=Math.exp(-dt*8.3); uRuffle.value=hitPulse;
+    uMotion.value=reducedMotion.matches?0:1;
     if(tick>=nextTilt) {
       tiltFrom=tiltValue; tiltTo=between(-.17,.17); tiltStart=tick; tiltDuration=between(.62,.91); nextTilt=tick+between(2.1,3.9);
       if(rng()<.40)blinkStart=tick+between(.13,.43);
