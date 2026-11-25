@@ -51,7 +51,7 @@
   <span class="hint"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="4.8"/><path d="m12 12 4 4M6.5 8.5h4m-2-2v4"/></svg><span class="mouse">拖动环绕 · 滚轮缩放</span><span class="touch">双指捏合微距缩放</span></span>
 </div>
 <details id="quality" hidden>
-  <summary>羽毛设置</summary>
+  <summary>羽毛与鸟喙设置</summary>
   <div class="quality-controls">
     <div>
       <div class="quality-label"><label for="feather-count">羽毛几何数量</label><output id="count-value" for="feather-count">12,500</output></div>
@@ -61,6 +61,10 @@
       <div class="quality-label"><label for="feather-realism">羽毛真实度</label><output id="realism-value" for="feather-realism">80%</output></div>
       <input id="feather-realism" type="range" min="0" max="100" step="1" value="80" aria-describedby="realism-scale">
       <div class="quality-scale" id="realism-scale"><span>简洁羽面</span><span>细羽与绒边</span></div>
+    </div>
+    <div>
+      <div class="quality-label"><label for="bill-opening">鸟喙开合</label><output id="bill-value" for="bill-opening">0%</output></div>
+      <input id="bill-opening" type="range" min="0" max="100" step="1" value="0">
     </div>
     <button type="button" id="quality-reset">恢复默认</button>
   </div>
@@ -472,10 +476,11 @@ function createWorld(T, OrbitControls) {
       down:featherLayer(parent,r,capacity-outer,isHead,false,material),
       outer:featherLayer(parent,r,outer,isHead,true,material)});
   }
-  function featherSettings() {
+  function sceneSettings() {
     const panel=document.querySelector('#quality');
     const count=document.querySelector('#feather-count'), realism=document.querySelector('#feather-realism');
     const countValue=document.querySelector('#count-value'), realismValue=document.querySelector('#realism-value');
+    const opening=document.querySelector('#bill-opening'), openingValue=document.querySelector('#bill-value');
     const format=new Intl.NumberFormat('zh-CN');
     count.max=maxFeathers;
     function updateCount() {
@@ -492,14 +497,20 @@ function createWorld(T, OrbitControls) {
       uRealism.value=realism.valueAsNumber/100;
       realismValue.value=`${realism.value}%`;
     }
+    function updateOpening() {
+      manualGape=opening.valueAsNumber/100;
+      openingValue.value=`${opening.value}%`;
+    }
     count.addEventListener('input',updateCount);
     realism.addEventListener('input',updateRealism);
+    opening.addEventListener('input',updateOpening);
     document.querySelector('#quality-reset').addEventListener('click',()=>{
       count.value=count.defaultValue;
       realism.value=realism.defaultValue;
-      updateCount(); updateRealism();
+      opening.value=opening.defaultValue;
+      updateCount(); updateRealism(); updateOpening();
     });
-    updateCount(); updateRealism();
+    updateCount(); updateRealism(); updateOpening();
     panel.hidden=false;
   }
   const bird=new T.Group(); bird.name='北长尾山雀'; scene.add(bird);
@@ -508,7 +519,6 @@ function createWorld(T, OrbitControls) {
   const head=new T.Group(); head.position.set(.40,1.49,0); head.rotation.order='YZX'; bird.add(head);
   const headBall=new T.Group(); headBall.position.set(.10,.12,0); head.add(headBall);
   coat(headBall,V(.6,.535,.52),true);
-  featherSettings();
 
   const standard=(hex,roughness=.76)=>new T.MeshStandardMaterial({color:hex,roughness});
   const unitBall=new T.SphereGeometry(1,28,20);
@@ -584,25 +594,95 @@ function createWorld(T, OrbitControls) {
     }
   }
 
-  // The short bill has separately modelled maxilla and mandible and a dark seam.
-  const billMat=standard(0x322c2c,.40), mouthMat=standard(0x170f10,.87);
-  const billBase=.553;
-  const bill = new T.Group(); head.add(bill); bill.position.set(billBase,.078,0);
-  function billHalf(upper) {
-    const g=gridMesh(17,19,(t,v)=>{
-      const x=.255*t, r=(.11*(1-t)**.70+.001)*(1+.14*Math.sin(PI*t));
-      const seam=.001-.050*t*t;
-      let phi=PI*v;
-      return V(x,seam+(upper?1:-1)*Math.sin(phi)*r*(upper?1.02:.52)+ (upper?.002:-.006),Math.cos(phi)*r);
-    },upper);
-    const m=new T.Mesh(g,billMat); m.material.side=T.DoubleSide; m.castShadow=true; hitParts.push(m);
-    return m;
+  // Each cutting edge carries its own closed inner surface. The lower shell
+  // and tongue pivot together around the hinge buried at the base of the bill.
+  const billMat=standard(0x322c2c,.40), mouthMat=standard(0x351e22,.86);
+  const bill=new T.Group(); bill.position.set(.557,.078,0); head.add(bill);
+  const jaw=new T.Group(); jaw.position.set(.025,-.012,0); bill.add(jaw);
+  const lowerBill=new T.Group(); lowerBill.position.copy(jaw.position).negate(); jaw.add(lowerBill);
+  const billWidth=t=>(.10*(1-t)**.78+.001)*(1+.14*Math.sin(PI*t));
+  const billSeam=t=>.001-.050*t*t;
+  billMat.side=mouthMat.side=T.DoubleSide;
+  function billHalf(parent,upper) {
+    const direction=upper?1:-1, length=upper?.255:.244, lip=upper?.0015:-.0025;
+    const width=upper?1:.91;
+    const shell=new T.Mesh(gridMesh(17,18,(t,v)=>{
+      const r=billWidth(t)*width, phi=PI*v;
+      return V(length*t,billSeam(t)+lip+direction*Math.sin(phi)*r*(upper?.98:.52),Math.cos(phi)*r);
+    }),billMat);
+    const interior=new T.Mesh(gridMesh(17,8,(t,v)=>{
+      const u=v*2-1, r=billWidth(t)*width;
+      return V(length*t,billSeam(t)+lip+direction*(1-u*u)*r*.18,u*r);
+    },upper),mouthMat);
+    shell.castShadow=true;
+    parent.add(shell,interior);
+    hitParts.push(shell,interior);
   }
-  const billUpper=billHalf(true), billLower=billHalf(false); bill.add(billUpper,billLower);
-  oval(bill,mouthMat,V(.078,-.005,0),V(.147,.016,.080));
-  for(const s of [-1,1]) {
-    const n=oval(bill,mouthMat,V(.072,.055,s*.076),V(.019,.010,.006)); n.rotation.z=-.18; n.rotation.y=s*.21;
+  billHalf(bill,true);
+  billHalf(lowerBill,false);
+  const tongue=oval(lowerBill,standard(0x774c55,.76),V(.129,-.021,0),V(.066,.009,.023));
+  tongue.rotation.z=-.14;
+  const nostrilMat=standard(0x160f11,.94);
+  for(const side of [-1,1]) {
+    const nostril=oval(bill,nostrilMat,V(.072,.055,side*.072),V(.017,.009,.005));
+    nostril.rotation.z=-.18;
+    nostril.rotation.y=side*.21;
   }
+  // Connect each cheek to both cutting edges as the jaw opens.
+  const gapeCorners=[];
+  const cornerT=.66;
+  for(const side of [-1,1]) {
+    const geometry=new T.BufferGeometry();
+    const lower=V(.244*cornerT,billSeam(cornerT)-.0025,side*billWidth(cornerT)*.91);
+    const points=new T.Float32BufferAttribute([
+      .027,-.013,side*.078,
+      .255*cornerT,billSeam(cornerT)+.0015,side*billWidth(cornerT),
+      lower.x,lower.y,lower.z
+    ],3);
+    points.setUsage(T.DynamicDrawUsage);
+    geometry.setAttribute('position',points);
+    geometry.computeVertexNormals();
+    const corner=new T.Mesh(geometry,mouthMat);
+    corner.frustumCulled=false;
+    bill.add(corner);
+    gapeCorners.push({corner,lower,points});
+  }
+  let manualGape=0, jawGape=-1, songStart=-Infinity, songAudio=null;
+  const chirps=[
+    {frequency:1750,duration:.13,gain:.94}, {frequency:2380,duration:.095,gain:.66},
+    {frequency:2110,duration:.16,gain:.86}, {frequency:2840,duration:.20,gain:.73}
+  ];
+  let songEnd=.025;
+  for(const chirp of chirps) {
+    chirp.start=songEnd;
+    songEnd+=chirp.duration*.70;
+  }
+  const gapePoint=V();
+  function updateBill(dt) {
+    const elapsed=(songAudio?.currentTime??performance.now()*.001)-songStart;
+    let singingGape=0;
+    for(const {start,duration,gain} of chirps) {
+      const age=elapsed-start;
+      const envelope=smooth(-.012,.021,age)*(1-smooth(duration*.43,duration+.021,age));
+      singingGape=Math.max(singingGape,envelope*(.43+.49*gain));
+    }
+    const target=manualGape+(1-manualGape)*singingGape;
+    let next=lerp(Math.max(0,jawGape),target,reducedMotion.matches?1:1-Math.exp(-dt*26));
+    if(Math.abs(next-target)<.0005) next=target;
+    if(next===jawGape) return;
+    jawGape=next;
+    jaw.rotation.z=-.51*jawGape;
+    tongue.visible=jawGape>.20;
+    for(const {corner,lower,points} of gapeCorners) {
+      corner.visible=jawGape>.015;
+      if(!corner.visible) continue;
+      gapePoint.copy(lower).sub(jaw.position).applyQuaternion(jaw.quaternion).add(jaw.position);
+      points.setXYZ(2,gapePoint.x,gapePoint.y,gapePoint.z);
+      points.needsUpdate=true;
+      corner.geometry.computeVertexNormals();
+    }
+  }
+  sceneSettings();
 
   const eyeRim=standard(0x5a4238,.64), socketMat=standard(0x392d2a,.79);
   const eyeGeometry=new T.SphereGeometry(1,48,36), eyes=[];
@@ -709,12 +789,29 @@ function createWorld(T, OrbitControls) {
     return mat;
   }
   const bark=barkMaterial();
+  const barkColumns=40, mainBranchRows=124;
   function log(curve,startRadius,endRadius,rows=92) {
     const radius=t=>lerp(startRadius,endRadius,t)*(.99+.075*Math.sin(t*PI*4)+.037*Math.sin(t*PI*11));
-    const m=new T.Mesh(gridMesh(rows,40,(t,v)=>barkPoint(curve,t,TAU*v,radius(t)),true),bark);
+    const m=new T.Mesh(gridMesh(rows,barkColumns,(t,v)=>barkPoint(curve,t,TAU*v,radius(t)),true),bark);
     env.add(m); m.castShadow=true; m.receiveShadow=true; return radius;
   }
-  const branchRadius=log(branchCurve,.36,.17,124);
+  const branchRadius=log(branchCurve,.36,.17,mainBranchRows);
+  const footStations=[.20,-.34];
+  // Sample the two triangles used by the rendered bark mesh. Feet and snow
+  // meet the same surface even where the procedural bark ridges are sharp.
+  function mainBarkSurface(t,angle) {
+    const row=clamp(t,0,1)*mainBranchRows;
+    const col=T.MathUtils.euclideanModulo(angle,TAU)*barkColumns/TAU;
+    const i=Math.min(Math.floor(row),mainBranchRows-1), j=Math.floor(col);
+    const u=row-i, v=col-j;
+    function vertex(rowIndex,colIndex) {
+      const f=rowIndex/mainBranchRows;
+      return barkPoint(branchCurve,f,colIndex*TAU/barkColumns,branchRadius(f));
+    }
+    const left=vertex(i+1,j), right=vertex(i,j+1);
+    if(u+v<=1) return vertex(i,j).multiplyScalar(1-u-v).addScaledVector(left,u).addScaledVector(right,v);
+    return vertex(i+1,j+1).multiplyScalar(u+v-1).addScaledVector(left,1-v).addScaledVector(right,1-u);
+  }
   const snowMat=standard(0xffffff,.81);
   snowMat.onBeforeCompile=sh=>{
     sh.vertexShader='varying vec3 vSnow;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vSnow=position;');
@@ -737,14 +834,20 @@ function createWorld(T, OrbitControls) {
     `);
   };
   function snowCap(curve,radius,t0,t1,spread,thick,phase) {
-    const g=gridMesh(Math.ceil(100*(t1-t0))+24,29,(t,v)=>{
+    const onPerch=curve===branchCurve;
+    const g=gridMesh(Math.ceil(100*(t1-t0))+24+(onPerch?42:0),29,(t,v)=>{
       const f=lerp(t0,t1,t), edge=(v*2-1), taper=smooth(0,.125,t)*(1-smooth(.86,1,t));
       const wav=.13*Math.sin(t*37+phase)+.085*Math.sin(t*87+phase*.4)+.067*Math.sin(t*127);
       const angle=edge*(spread+wav)*(.19+.81*Math.sqrt(taper))+.09*Math.sin(t*16+phase);
-      const p=barkPoint(curve,f,angle,radius(f));
+      const p=onPerch?mainBarkSurface(f,angle):barkPoint(curve,f,angle,radius(f));
       const crown=Math.pow(Math.max(0,1-edge*edge),.67);
       const lumps=.92+.21*Math.cos(t*24+phase)+.102*Math.sin(t*66+angle*5.1)+.052*Math.sin(t*136+angle*12)+.036*Math.sin(t*174+angle*28);
-      return p.addScaledVector(pathBasis(curve,f).y, thick*lumps*taper*crown-.015*(1-crown*taper));
+      let depth=thick*lumps*taper*crown-.015*(1-crown*taper);
+      if(onPerch) {
+        const distance=Math.max(footStations[1]-p.x,p.x-footStations[0],0);
+        depth=lerp(-.026,depth,smooth(.115,.32,distance));
+      }
+      return p.addScaledVector(pathBasis(curve,f).y,depth);
     },true);
     const m=new T.Mesh(g,snowMat); env.add(m); m.receiveShadow=true; m.castShadow=true; return m;
   }
@@ -809,36 +912,84 @@ function createWorld(T, OrbitControls) {
   const needles=new T.Mesh(needlesGeo,new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:.80}));
   needles.receiveShadow=true; env.add(needles);
 
-  // Visible anatomy: scaly toes wrap over the snow and hook into the bark.
-  const feet=[], footMat=standard(0x594747,.75), claws=standard(0x28242a,.52), scales=standard(0x765e5c,.82);
-  for(const [x,z] of [[.12,.29],[-.39,-.12]]) {
-    const foot=new T.Group(); foot.position.set(x,.139,z); bird.add(foot); feet.push(foot);
-    const legPoints=[V(-.11,.39,-.065),V(-.04,.26,-.036),V(.027,.132,.005),V(0,.046,.006)];
-    tube(foot,legPoints,.038,footMat,16).castShadow=true;
-    const ankle=oval(foot,footMat,V(0,.041,.010),V(.067,.044,.051)); ankle.castShadow=true;
-    for(let j=0;j<3;j++) {
-      const xEnd=.085+j*.066, near=.123-j*.049;
-      const points=[V(.014,.046,.011),V(.064+j*.018,.055,.038+j*.020),V(xEnd,.006,near+.086),V(xEnd-.019,-.054,near+.106)];
-      const toe=tube(foot,points,.022-j*.002,footMat,13); toe.castShadow=true;
-      const path=spline(points);
-      for(let k=1;k<6;k++) {
-        const p=path.getPoint(k/7); p.y+=.011;
-        const sc=oval(foot,scales,p,V(.014,.012,.020-j*.0018));
-        sc.rotation.y=Math.atan2(path.getTangent(k/7).z,path.getTangent(k/7).x);
-      }
-      const a=points[3], nail=spline([a,a.clone().add(V(.003,-.028,.012)),a.clone().add(V(-.037,-.056,.001))]);
-      const nailGeo=gridMesh(9,8,(t,v)=>{
-        const r=.014*(1-t)**.8+.0004, n=TAU*v;
-        const b=pathBasis(nail,t); return nail.getPoint(t).addScaledVector(b.y,Math.cos(n)*r).addScaledVector(b.z,Math.sin(n)*r);
-      },true);
-      foot.add(new T.Mesh(nailGeo,claws));
+  // Feet stay in branch space. Only the tarsus moves with the bird, so a
+  // breath or weight shift cannot slide contact points off the perch.
+  const feet=[], footMat=standard(0x544745,.77), claws=standard(0x28242a,.48), scales=standard(0x725d57,.85);
+  const perchFeet=new T.Group(); env.add(perchFeet);
+  const birdRestHeight=-.125;
+  bird.position.y=birdRestHeight;
+  function branchStation(x) {
+    let lo=0, hi=1;
+    for(let i=0;i<20;i++) {
+      const mid=(lo+hi)*.5;
+      if(branchCurve.getPoint(mid).x<x) lo=mid;
+      else hi=mid;
     }
-    tube(foot,[V(-.021,.052,-.005),V(-.115,.027,-.065),V(-.16,-.052,-.079),V(-.13,-.10,-.084)],.019,footMat,12);
-    tube(foot,[V(-.13,-.10,-.084),V(-.115,-.118,-.078),V(-.095,-.125,-.073)],.010,claws,7);
+    return (lo+hi)*.5;
   }
-
-  // A clear, two-component winter silhouette; the legs meet the upper surface.
-
+  function liftedBarkPoint(t,angle,height) {
+    const p=mainBarkSurface(t,angle);
+    const outward=p.clone().sub(branchCurve.getPoint(t)).normalize();
+    return p.addScaledVector(outward,height);
+  }
+  function taperedTube(parent,material,pointAt,radiusAt,rows) {
+    const path=spline(Array.from({length:rows+1},(_,k)=>pointAt(k/rows)));
+    const frames=path.computeFrenetFrames(rows,false);
+    const g=gridMesh(rows,8,(t,v)=>{
+      const frame=Math.round(t*rows), angle=v*TAU, r=radiusAt(t);
+      return path.points[frame].clone().addScaledVector(frames.normals[frame],-Math.cos(angle)*r)
+        .addScaledVector(frames.binormals[frame],Math.sin(angle)*r);
+    });
+    const mesh=new T.Mesh(g,material); mesh.castShadow=true; mesh.receiveShadow=true; parent.add(mesh);
+    return path;
+  }
+  for(const [index,x] of footStations.entries()) {
+    const station=branchStation(x), top=index===0?.13:-.22;
+    const ankle=liftedBarkPoint(station,top,.033);
+    const pad=oval(perchFeet,footMat,liftedBarkPoint(station,top,.027),V(.047,.031,.042));
+    pad.castShadow=true; pad.receiveShadow=true;
+    const tarsus=new T.Group(); tarsus.position.copy(ankle); perchFeet.add(tarsus);
+    tube(tarsus,[V(),V(.020,.28,.006),V(-.016,.67,-.027),V(0,1,0)],.023,footMat,16).castShadow=true;
+    const hip=V(x-.103,.523,index===0?.21:-.125);
+    feet.push({ankle,tarsus,hip});
+    const digits=[
+      {spread:-.078,sweep:.97,radius:.018}, {spread:.005,sweep:1.17,radius:.020},
+      {spread:.087,sweep:1.00,radius:.017}, {spread:-.05,sweep:-1.05,radius:.019}
+    ];
+    for(const {spread,sweep,radius} of digits) {
+      const at=p=>station+spread*(.19+.81*p)/10;
+      const angleAt=p=>top+sweep*p;
+      const radiusAt=p=>radius*(1-.46*p);
+      function toePoint(p) {
+        const toe=liftedBarkPoint(at(p),angleAt(p),radiusAt(p)+.003);
+        return ankle.clone().lerp(toe,smooth(0,.32,p));
+      }
+      const toePath=taperedTube(perchFeet,footMat,toePoint,radiusAt,15);
+      for(let k=1;k<=6;k++) {
+        const f=.18+k*.112, t=at(f);
+        const p=toePath.getPoint(f), tangent=toePath.getTangent(f);
+        const outward=p.clone().sub(branchCurve.getPoint(t)).normalize();
+        const scale=oval(perchFeet,scales,p.addScaledVector(outward,radiusAt(f)*.76),V(radiusAt(f)*.92,.0045,.0094));
+        const cross=outward.clone().cross(tangent).normalize();
+        const normal=tangent.clone().cross(cross).normalize();
+        scale.quaternion.setFromRotationMatrix(new T.Matrix4().makeBasis(cross,normal,tangent));
+      }
+      const nailLength=Math.sign(sweep)*.34;
+      taperedTube(perchFeet,claws,p=>{
+        const f=at(1)+Math.sign(spread)*.0012*p;
+        return liftedBarkPoint(f,angleAt(1)+nailLength*p,.014*(1-p)**1.3-.002*p);
+      },p=>.011*(1-p)**.88+.0009,10);
+    }
+  }
+  const legDirection=V();
+  function updateLegs() {
+    for(const {ankle,tarsus,hip} of feet) {
+      legDirection.copy(hip).add(bird.position).sub(ankle);
+      tarsus.scale.y=legDirection.length();
+      tarsus.quaternion.setFromUnitVectors(up,legDirection.normalize());
+    }
+  }
+  updateLegs();
 
   const dustMotes=[];
   for(let i=0;i<25;i++) {
@@ -904,26 +1055,31 @@ function createWorld(T, OrbitControls) {
   },{passive:true});
   canvas.addEventListener('pointerleave',()=>{pointerInside=false;ndc.set(8,8);canvas.removeAttribute('data-hover');},{passive:true});
   function sing(){
+    songAudio=null;
+    songStart=performance.now()*.001;
     const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
     try {
-      const ac=sing.ac||(sing.ac=new AC()); if(ac.state==='suspended')ac.resume();
+      const ac=sing.ac||(sing.ac=new AC());
+      if(ac.state==='suspended') ac.resume().catch(err=>console.warn('Web Audio resume unavailable',err));
       const now=ac.currentTime;
       const master=ac.createGain(); master.gain.setValueAtTime(.0001,now); master.gain.exponentialRampToValueAtTime(.22,now+.022); master.gain.exponentialRampToValueAtTime(.0001,now+.88); master.connect(ac.destination);
-      const notes=[{f:1750,d:.13,g:.94},{f:2380,d:.095,g:.66},{f:2110,d:.16,g:.86},{f:2840,d:.20,g:.73}];
-      let at=now+.025;
-      for(let i=0;i<notes.length;i++) {
-        const n=notes[i], osc=ac.createOscillator(), env=ac.createGain(), filter=ac.createBiquadFilter();
-        osc.type='sine'; osc.frequency.setValueAtTime(n.f*.90,at); osc.frequency.exponentialRampToValueAtTime(n.f*1.08,at+n.d*.34); osc.frequency.exponentialRampToValueAtTime(n.f*.94,at+n.d);
-        const overtone=ac.createOscillator(), overtoneGain=ac.createGain(); overtone.type='sine'; overtone.frequency.value=n.f*2.03;
+      for(const {frequency:f,duration:d,gain:g,start} of chirps) {
+        const at=now+start;
+        const osc=ac.createOscillator(), env=ac.createGain(), filter=ac.createBiquadFilter();
+        osc.type='sine'; osc.frequency.setValueAtTime(f*.90,at); osc.frequency.exponentialRampToValueAtTime(f*1.08,at+d*.34); osc.frequency.exponentialRampToValueAtTime(f*.94,at+d);
+        const overtone=ac.createOscillator(), overtoneGain=ac.createGain(); overtone.type='sine'; overtone.frequency.value=f*2.03;
         overtoneGain.gain.value=.075;
         filter.type='bandpass'; filter.frequency.value=3200; filter.Q.value=1.4;
-        env.gain.setValueAtTime(.0001,at); env.gain.exponentialRampToValueAtTime(n.g,at+.014); env.gain.exponentialRampToValueAtTime(.0001,at+n.d+.06);
+        env.gain.setValueAtTime(.0001,at); env.gain.exponentialRampToValueAtTime(g,at+.014); env.gain.exponentialRampToValueAtTime(.0001,at+d+.06);
         osc.connect(filter); overtone.connect(overtoneGain); overtoneGain.connect(filter); filter.connect(env); env.connect(master);
-        osc.start(at); overtone.start(at); osc.stop(at+n.d+.07); overtone.stop(at+n.d+.07); at+=n.d*.70;
+        osc.start(at); overtone.start(at); osc.stop(at+d+.07); overtone.stop(at+d+.07);
       }
+      const at=now+songEnd;
       const noiseBuffer=ac.createBuffer(1,Math.ceil(ac.sampleRate*.11),ac.sampleRate), channel=noiseBuffer.getChannelData(0);
       for(let i=0;i<channel.length;i++)channel[i]=(rng()*2-1)*Math.exp(-i/channel.length*13);
       const noise=ac.createBufferSource(), high=ac.createBiquadFilter(), ng=ac.createGain(); noise.buffer=noiseBuffer; high.type='highpass'; high.frequency.value=4400; ng.gain.setValueAtTime(.0001,at); ng.gain.exponentialRampToValueAtTime(.095,at+.006); ng.gain.exponentialRampToValueAtTime(.0001,at+.105); noise.connect(high);high.connect(ng);ng.connect(master);noise.start(at);
+      songAudio=ac;
+      songStart=now;
     } catch(err){console.warn('Web Audio playback unavailable',err);}
   }
   function interact(e) {
@@ -967,12 +1123,13 @@ function createWorld(T, OrbitControls) {
       torso.scale.set(1+breath*.44,1+breath*.93,1+breath*.50);
       torso.position.y=1.11+breath*.33;
       torso.rotation.z=.009*Math.sin(tick*.71)+.004*Math.sin(tick*1.9);
-      bird.position.y=.009*Math.sin(tick*1.05)+.0035*Math.sin(tick*2.21+.4);
-      const grip=Math.sin(tick*1.2+.7)*.010+Math.sin(tick*3.1)*.0028;
-      feet.forEach((f,i)=>{f.rotation.x=grip*(i?-.8:1);f.rotation.z=grip*.28;});
+      bird.position.y=birdRestHeight+.009*Math.sin(tick*1.05)+.0035*Math.sin(tick*2.21+.4);
+      bird.position.x=.005*Math.sin(tick*1.2+.7);
+      updateLegs();
       wings.forEach((w,i)=>{w.rotation.y=(i?1:-1)*(.009*Math.sin(tick*1.5+i)+.002*Math.sin(tick*5));});
       tail.rotation.x=.012*Math.sin(tick*.73+.7); tail.rotation.z=.008*Math.sin(tick*.91);
     }
+    updateBill(dt);
     uMotion.value=reducedMotion.matches?0:1;
     if(tick>=nextTilt) {
       tiltFrom=tiltValue; tiltTo=between(-.17,.17); tiltStart=tick; tiltDuration=between(.62,.91); nextTilt=tick+between(2.1,3.9);
